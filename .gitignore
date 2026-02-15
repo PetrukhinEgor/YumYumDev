@@ -1,0 +1,19 @@
+# node
+node_modules
+
+# expo
+.expo
+.expo-shared
+dist
+web-build
+
+# env
+.env
+.env.local
+
+# logs
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
