@@ -4,9 +4,12 @@ import React from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 
+
 import HomeScreen from './screens/HomeScreen'
 import ScanReceiptScreen from './screens/ScanReceiptScreen'
 import ReceiptResult from './screens/ReceiptResult'
+import ProductsScreen from './screens/ProductsScreen'
+
 
 const Stack = createNativeStackNavigator()
 
@@ -17,6 +20,9 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="ScanReceipt" component={ScanReceiptScreen} />
         <Stack.Screen name="ReceiptResult" component={ReceiptResult} />
+        <Stack.Screen name="Products" component={ProductsScreen} />
+
+        
       </Stack.Navigator>
     </NavigationContainer>
   )

@@ -7,11 +7,23 @@ export default function ReceiptResult({ route }) {
   const { qrData } = route.params
   const [data, setData] = useState(null)
 
-  useEffect(() => {
-    axios.post('http://192.168.1.138:5000/api/receipts/scan', { qr: qrData })
-      .then(res => setData(res.data))
-      .catch(err => console.log(err))
-  }, [])
+useEffect(() => {
+  console.log("QR DATA:", qrData)
+
+  axios.post(
+    'http://192.168.1.138:5000/api/receipts/scan',
+    { qr: qrData },
+    { timeout: 10000 }
+  )
+  .then(res => {
+    console.log("RESPONSE:", res.data)
+    setData(res.data)
+  })
+  .catch(err => {
+    console.log("ERROR:", err.message)
+  })
+}, [])
+
 
   if (!data) return <ActivityIndicator size="large" />
 
