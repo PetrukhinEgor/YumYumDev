@@ -15,6 +15,7 @@ app.use(express.json())
 app.use('/api/receipts', require('./routes/receipts.routes'))
 app.use('/api/products', require('./routes/products.routes'))
 app.use("/api/recipes", require("./routes/recipes.routes"));
+app.use("/api/shopping-list", require("./routes/shopping.routes"));
 
 
 
