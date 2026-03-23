@@ -3,7 +3,11 @@
 const express = require("express");
 const axios = require("axios");
 const pool = require("../db");
-const matchIngredient = require("../utils/productMatcher");
+const {
+  matchIngredient,
+  isNonFoodProduct,
+  isLikelyFoodProduct,
+} = require("../utils/productMatcher");
 const parseProductAmount = require("../utils/parseProductAmount");
 
 const router = express.Router();
@@ -38,16 +42,43 @@ router.post("/scan", async (req, res) => {
     await pool.query("BEGIN");
     transactionStarted = true;
 
+    const savedItems = [];
+    const skippedItems = [];
+
     for (const item of items) {
-      const originalName = item.name;
+      const originalName = item.name?.trim();
+
+      if (!originalName) {
+        skippedItems.push({
+          name: item.name || null,
+          reason: "empty_name",
+        });
+        continue;
+      }
+
+      if (isNonFoodProduct(originalName)) {
+        skippedItems.push({
+          name: originalName,
+          reason: "non_food",
+        });
+        continue;
+      }
+
       const ingredientName = matchIngredient(originalName);
+
+      if (!ingredientName && !isLikelyFoodProduct(originalName)) {
+        skippedItems.push({
+          name: originalName,
+          reason: "unknown_non_food_or_unclear",
+        });
+        continue;
+      }
 
       let ingredientId = null;
       let baseUnit = null;
       let normalizedQuantity = null;
       let normalizedUnit = null;
 
-      // 1. Ищем ingredient_id и base_unit
       if (ingredientName) {
         const ingredientResult = await pool.query(
           `
@@ -64,17 +95,17 @@ router.post("/scan", async (req, res) => {
         }
       }
 
-      // 2. Пытаемся распарсить количество из названия товара
       if (baseUnit) {
-        const parsedAmount = parseProductAmount(originalName, baseUnit, ingredientName);
+        const parsedAmount = parseProductAmount(
+          originalName,
+          baseUnit,
+          ingredientName
+        );
 
         normalizedQuantity = parsedAmount.normalizedQuantity;
         normalizedUnit = parsedAmount.normalizedUnit;
       }
 
-      // 3. Сохраняем товар
-      // Старая логика quantity=1 пока остается для обратной совместимости.
-      // Новая логика идет в normalized_quantity / normalized_unit.
       await pool.query(
         `
         INSERT INTO products (
@@ -97,29 +128,49 @@ router.post("/scan", async (req, res) => {
             THEN products.normalized_quantity + EXCLUDED.normalized_quantity
             ELSE COALESCE(products.normalized_quantity, EXCLUDED.normalized_quantity)
           END,
-          normalized_unit = COALESCE(products.normalized_unit, EXCLUDED.normalized_unit)
+          normalized_unit = COALESCE(products.normalized_unit, EXCLUDED.normalized_unit),
+          unit = COALESCE(products.unit, EXCLUDED.unit)
         `,
         [
-          1,                     // пока тестовый пользователь
+          1,
           originalName,
-          1,                     // старая логика для обратной совместимости
-          baseUnit || null,      // временно сохраняем unit как базовую единицу, если нашли
+          1,
+          baseUnit || null,
           ingredientId,
           normalizedQuantity,
           normalizedUnit,
         ]
       );
+
+      savedItems.push({
+        name: originalName,
+        ingredientName,
+        ingredientId,
+        normalizedQuantity,
+        normalizedUnit,
+      });
     }
 
     await pool.query("COMMIT");
 
-    res.json(response.data);
+    res.json({
+      message: "Чек обработан",
+      totalItems: items.length,
+      savedCount: savedItems.length,
+      skippedCount: skippedItems.length,
+      savedItems,
+      skippedItems,
+      rawResponse: response.data,
+    });
   } catch (error) {
     if (transactionStarted) {
       await pool.query("ROLLBACK");
     }
 
-    console.error("Ошибка получения данных чека:", error.response?.data || error.message);
+    console.error(
+      "Ошибка получения данных чека:",
+      error.response?.data || error.message
+    );
 
     res.status(500).json({
       error: "Ошибка получения данных чека",

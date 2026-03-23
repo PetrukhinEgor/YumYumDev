@@ -12,7 +12,17 @@ GET /api/recipes
 */
 router.get("/", async (req, res) => {
   try {
-    const recipes = await pool.query("SELECT * FROM recipes ORDER BY id");
+    const recipes = await pool.query(`
+      SELECT
+        id,
+        name,
+        description,
+        cooking_time_min,
+        servings,
+        recipe_steps
+      FROM recipes
+      ORDER BY id
+    `);
 
     res.json(recipes.rows);
   } catch (err) {
@@ -32,7 +42,12 @@ router.get("/available", async (req, res) => {
 
   try {
     const recipesResult = await pool.query(`
-      SELECT id, name
+      SELECT
+        id,
+        name,
+        description,
+        cooking_time_min,
+        servings
       FROM recipes
       ORDER BY id
     `);
@@ -90,10 +105,7 @@ router.get("/available", async (req, res) => {
       }
 
       if (canCook) {
-        availableRecipes.push({
-          id: recipe.id,
-          name: recipe.name,
-        });
+        availableRecipes.push(recipe);
       }
     }
 
@@ -117,7 +129,12 @@ router.get("/missing", async (req, res) => {
 
   try {
     const recipesResult = await pool.query(`
-      SELECT id, name
+      SELECT
+        id,
+        name,
+        description,
+        cooking_time_min,
+        servings
       FROM recipes
       ORDER BY id
     `);
@@ -180,8 +197,7 @@ router.get("/missing", async (req, res) => {
 
       if (missingIngredients.length > 0) {
         recipesWithMissing.push({
-          id: recipe.id,
-          name: recipe.name,
+          ...recipe,
           missingIngredients,
         });
       }
@@ -210,7 +226,20 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    const recipe = await pool.query("SELECT * FROM recipes WHERE id = $1", [id]);
+    const recipe = await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        description,
+        cooking_time_min,
+        servings,
+        recipe_steps
+      FROM recipes
+      WHERE id = $1
+      `,
+      [id]
+    );
 
     if (recipe.rows.length === 0) {
       return res.status(404).json({
@@ -229,6 +258,7 @@ router.get("/:id", async (req, res) => {
       JOIN ingredients i
         ON i.id = ri.ingredient_id
       WHERE ri.recipe_id = $1
+      ORDER BY ri.id
       `,
       [id]
     );
@@ -254,6 +284,27 @@ router.get("/:id/check", async (req, res) => {
   const userId = 1;
 
   try {
+    const recipeResult = await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        description,
+        cooking_time_min,
+        servings,
+        recipe_steps
+      FROM recipes
+      WHERE id = $1
+      `,
+      [recipeId]
+    );
+
+    if (recipeResult.rows.length === 0) {
+      return res.status(404).json({
+        error: "Рецепт не найден",
+      });
+    }
+
     const ingredientsResult = await pool.query(
       `
       SELECT
@@ -307,6 +358,7 @@ router.get("/:id/check", async (req, res) => {
     }
 
     res.json({
+      recipe: recipeResult.rows[0],
       canCook: missingProducts.length === 0,
       missingProducts,
     });
@@ -333,7 +385,25 @@ router.post("/:id/cook", async (req, res) => {
 
     /*
     ========================
-    1. Получаем ингредиенты рецепта
+    1. Проверяем, что рецепт существует
+    ========================
+    */
+    const recipeResult = await client.query(
+      `
+      SELECT id, name
+      FROM recipes
+      WHERE id = $1
+      `,
+      [recipeId]
+    );
+
+    if (recipeResult.rows.length === 0) {
+      throw new Error("Рецепт не найден");
+    }
+
+    /*
+    ========================
+    2. Получаем ингредиенты рецепта
     ========================
     */
     const ingredientsResult = await client.query(
@@ -356,7 +426,7 @@ router.post("/:id/cook", async (req, res) => {
 
     /*
     ========================
-    2. Проверяем наличие по normalized_quantity
+    3. Проверяем наличие по normalized_quantity
     ========================
     */
     for (const ingredient of ingredients) {
@@ -389,7 +459,7 @@ router.post("/:id/cook", async (req, res) => {
 
     /*
     ========================
-    3. FIFO-списание по normalized_quantity
+    4. FIFO-списание по normalized_quantity
     ========================
     */
     for (const ingredient of ingredients) {

@@ -3,143 +3,177 @@
 function normalizeNumber(rawValue) {
   if (!rawValue) return null;
 
-  const normalized = rawValue.replace(",", ".").trim();
+  const normalized = String(rawValue).replace(",", ".").trim();
   const parsed = Number(normalized);
 
   if (Number.isNaN(parsed)) return null;
-
   return parsed;
+}
+
+function createResult(quantity, unit) {
+  return {
+    normalizedQuantity: quantity,
+    normalizedUnit: unit,
+  };
+}
+
+function extractByRegex(name, regex) {
+  const match = name.match(regex);
+  if (!match) return null;
+
+  return normalizeNumber(match[1]);
+}
+
+function parsePieces(name) {
+  const patterns = [
+    /(\d+(?:[.,]\d+)?)\s*шт/i,
+    /(\d+(?:[.,]\d+)?)\s*шт\./i,
+    /(\d+(?:[.,]\d+)?)\s*pcs/i,
+    /(\d+(?:[.,]\d+)?)\s*яиц/i,
+  ];
+
+  for (const pattern of patterns) {
+    const value = extractByRegex(name, pattern);
+    if (value !== null) {
+      return createResult(value, "pcs");
+    }
+  }
+
+  return null;
+}
+
+function parseMilliliters(name) {
+  const mlPatterns = [
+    /(\d+(?:[.,]\d+)?)\s*мл/i,
+    /(\d+(?:[.,]\d+)?)\s*ml/i,
+  ];
+
+  for (const pattern of mlPatterns) {
+    const value = extractByRegex(name, pattern);
+    if (value !== null) {
+      return createResult(value, "ml");
+    }
+  }
+
+  const literPatterns = [
+    /(\d+(?:[.,]\d+)?)\s*л\b/i,
+    /(\d+(?:[.,]\d+)?)\s*л\./i,
+    /(\d+(?:[.,]\d+)?)\s*l\b/i,
+  ];
+
+  for (const pattern of literPatterns) {
+    const value = extractByRegex(name, pattern);
+    if (value !== null) {
+      return createResult(value * 1000, "ml");
+    }
+  }
+
+  return null;
+}
+
+function parseGrams(name) {
+  const kgPatterns = [
+    /(\d+(?:[.,]\d+)?)\s*кг/i,
+    /(\d+(?:[.,]\d+)?)\s*kg/i,
+  ];
+
+  for (const pattern of kgPatterns) {
+    const value = extractByRegex(name, pattern);
+    if (value !== null) {
+      return createResult(value * 1000, "g");
+    }
+  }
+
+  const rangeGramPatterns = [
+    /(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)\s*г(?:р)?/i,
+    /(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)\s*g\b/i,
+  ];
+
+  for (const pattern of rangeGramPatterns) {
+    const match = name.match(pattern);
+    if (match) {
+      const firstValue = normalizeNumber(match[1]);
+      if (firstValue !== null) {
+        return createResult(firstValue, "g");
+      }
+    }
+  }
+
+  const gramPatterns = [
+    /(\d+(?:[.,]\d+)?)\s*г(?:р)?/i,
+    /(\d+(?:[.,]\d+)?)\s*g\b/i,
+  ];
+
+  for (const pattern of gramPatterns) {
+    const value = extractByRegex(name, pattern);
+    if (value !== null) {
+      return createResult(value, "g");
+    }
+  }
+
+  return null;
+}
+
+function parsePackLikePieces(name) {
+  const patterns = [
+    /(\d+(?:[.,]\d+)?)\s*уп\b/i,
+    /(\d+(?:[.,]\d+)?)\s*уп\./i,
+    /(\d+(?:[.,]\d+)?)\s*упаков/i,
+    /(\d+(?:[.,]\d+)?)\s*пач/i,
+    /(\d+(?:[.,]\d+)?)\s*бут/i,
+    /(\d+(?:[.,]\d+)?)\s*бан/i,
+  ];
+
+  for (const pattern of patterns) {
+    const value = extractByRegex(name, pattern);
+    if (value !== null) {
+      return createResult(value, "pcs");
+    }
+  }
+
+  return null;
 }
 
 function parseProductAmount(productName, baseUnit, ingredientName = null) {
   if (!productName || !baseUnit) {
-    return {
-      normalizedQuantity: null,
-      normalizedUnit: baseUnit || null,
-    };
+    return createResult(null, baseUnit || null);
   }
 
   const name = productName.toLowerCase();
   const ingredient = ingredientName ? ingredientName.toLowerCase() : "";
 
-  // -----------------------------
-  // ШТУКИ
-  // -----------------------------
   if (baseUnit === "pcs") {
-    const pcsMatch = name.match(/(\d+(?:[.,]\d+)?)\s*шт/i);
+    const pcsResult = parsePieces(name);
+    if (pcsResult) return pcsResult;
 
-    if (pcsMatch) {
-      const value = normalizeNumber(pcsMatch[1]);
+    const packLikeResult = parsePackLikePieces(name);
+    if (packLikeResult) return packLikePieces;
 
-      return {
-        normalizedQuantity: value,
-        normalizedUnit: "pcs",
-      };
-    }
-
-    // если количество не найдено явно, считаем 1 штуку
-    return {
-      normalizedQuantity: 1,
-      normalizedUnit: "pcs",
-    };
+    return createResult(1, "pcs");
   }
 
-  // -----------------------------
-  // МИЛЛИЛИТРЫ
-  // -----------------------------
   if (baseUnit === "ml") {
-    const mlMatch = name.match(/(\d+(?:[.,]\d+)?)\s*мл/i);
-    if (mlMatch) {
-      const ml = normalizeNumber(mlMatch[1]);
+    const mlResult = parseMilliliters(name);
+    if (mlResult) return mlResult;
 
-      return {
-        normalizedQuantity: ml,
-        normalizedUnit: "ml",
-      };
-    }
-
-    const literMatch = name.match(/(\d+(?:[.,]\d+)?)\s*л/i);
-    if (literMatch) {
-      const liters = normalizeNumber(literMatch[1]);
-
-      if (liters !== null) {
-        return {
-          normalizedQuantity: liters * 1000,
-          normalizedUnit: "ml",
-        };
-      }
-    }
-
-    // Специальное правило для молока и кефира:
-    // если в названии указаны граммы, считаем для диплома 1г ≈ 1мл
-    // Пример: "Молоко ... 825г" -> 825 мл
     if (ingredient === "молоко" || ingredient === "кефир") {
-      const gramMatchForLiquid = name.match(/(\d+(?:[.,]\d+)?)\s*г(?:р)?/i);
-
-      if (gramMatchForLiquid) {
-        const grams = normalizeNumber(gramMatchForLiquid[1]);
-
-        return {
-          normalizedQuantity: grams,
-          normalizedUnit: "ml",
-        };
+      const gramsForLiquid = parseGrams(name);
+      if (gramsForLiquid) {
+        return createResult(gramsForLiquid.normalizedQuantity, "ml");
       }
     }
 
-    return {
-      normalizedQuantity: null,
-      normalizedUnit: "ml",
-    };
+    return createResult(null, "ml");
   }
 
-  // -----------------------------
-  // ГРАММЫ
-  // -----------------------------
   if (baseUnit === "g") {
-    const kgMatch = name.match(/(\d+(?:[.,]\d+)?)\s*кг/i);
-    if (kgMatch) {
-      const kg = normalizeNumber(kgMatch[1]);
+    const gramsResult = parseGrams(name);
+    if (gramsResult) return gramsResult;
 
-      if (kg !== null) {
-        return {
-          normalizedQuantity: kg * 1000,
-          normalizedUnit: "g",
-        };
-      }
-    }
-
-    const rangeGramMatch = name.match(
-      /(\d+(?:[.,]\d+)?)\s*-\s*(\d+(?:[.,]\d+)?)\s*г(?:р)?/i
-    );
-    if (rangeGramMatch) {
-      const grams = normalizeNumber(rangeGramMatch[1]);
-
-      return {
-        normalizedQuantity: grams,
-        normalizedUnit: "g",
-      };
-    }
-
-    const gramMatch = name.match(/(\d+(?:[.,]\d+)?)\s*г(?:р)?/i);
-    if (gramMatch) {
-      const grams = normalizeNumber(gramMatch[1]);
-
-      return {
-        normalizedQuantity: grams,
-        normalizedUnit: "g",
-      };
-    }
-
-    return {
-      normalizedQuantity: null,
-      normalizedUnit: "g",
-    };
+    return createResult(null, "g");
   }
 
-  return {
-    normalizedQuantity: null,
-    normalizedUnit: baseUnit,
-  };
+  return createResult(null, baseUnit);
 }
 
 module.exports = parseProductAmount;
