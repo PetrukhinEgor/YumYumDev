@@ -1,4 +1,4 @@
-//YumYum-server/routes/recipes.routes.js
+// YumYum-server/routes/recipes.routes.js
 
 const express = require("express");
 const router = express.Router();
@@ -28,14 +28,9 @@ GET /api/recipes/available
 ================================
 */
 router.get("/available", async (req, res) => {
-  const userId = 1; // пока используем тестового пользователя
+  const userId = 1;
 
   try {
-    /*
-    =========================
-    1. Получаем все рецепты
-    =========================
-    */
     const recipesResult = await pool.query(`
       SELECT id, name
       FROM recipes
@@ -43,71 +38,68 @@ router.get("/available", async (req, res) => {
     `);
 
     const recipes = recipesResult.rows;
-
     const availableRecipes = [];
 
-    /*
-    =========================
-    2. Проверяем каждый рецепт
-    =========================
-    */
     for (const recipe of recipes) {
-      /*
-      Получаем ингредиенты рецепта
-      */
       const ingredientsResult = await pool.query(
         `
-        SELECT ri.ingredient_id, ri.quantity
+        SELECT
+          ri.ingredient_id,
+          ri.quantity,
+          ri.unit,
+          i.name,
+          i.base_unit
         FROM recipe_ingredients ri
+        JOIN ingredients i
+          ON i.id = ri.ingredient_id
         WHERE ri.recipe_id = $1
         `,
-        [recipe.id],
+        [recipe.id]
       );
 
       const ingredients = ingredientsResult.rows;
-
       let canCook = true;
 
-      /*
-      Проверяем каждый ингредиент
-      */
       for (const ingredient of ingredients) {
-        const productResult = await pool.query(
+        const availableResult = await pool.query(
           `
-          SELECT COALESCE(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END),
-0) AS quantity
+          SELECT COALESCE(
+            SUM(
+              CASE
+                WHEN normalized_quantity > 0
+                 AND normalized_unit = $3
+                THEN normalized_quantity
+                ELSE 0
+              END
+            ),
+          0) AS available
           FROM products
           WHERE user_id = $1
           AND ingredient_id = $2
           `,
-          [userId, ingredient.ingredient_id],
+          [userId, ingredient.ingredient_id, ingredient.base_unit]
         );
 
-        const availableQty = Number(productResult.rows[0].quantity);
+        const availableQty = Number(availableResult.rows[0].available);
+        const neededQty = Number(ingredient.quantity);
 
-        if (availableQty < ingredient.quantity) {
+        if (availableQty < neededQty) {
           canCook = false;
           break;
         }
       }
 
-      /*
-      Если все ингредиенты есть — добавляем рецепт
-      */
       if (canCook) {
-        availableRecipes.push(recipe);
+        availableRecipes.push({
+          id: recipe.id,
+          name: recipe.name,
+        });
       }
     }
 
-    /*
-    =========================
-    3. Возвращаем результат
-    =========================
-    */
     res.json(availableRecipes);
   } catch (err) {
     console.error("Ошибка получения доступных рецептов:", err);
-
     res.status(500).json({
       error: "Ошибка сервера",
     });
@@ -124,11 +116,6 @@ router.get("/missing", async (req, res) => {
   const userId = 1;
 
   try {
-    /*
-    =========================
-    1. Получаем все рецепты
-    =========================
-    */
     const recipesResult = await pool.query(`
       SELECT id, name
       FROM recipes
@@ -136,68 +123,61 @@ router.get("/missing", async (req, res) => {
     `);
 
     const recipes = recipesResult.rows;
-
     const recipesWithMissing = [];
 
-    /*
-    =========================
-    2. Проверяем каждый рецепт
-    =========================
-    */
     for (const recipe of recipes) {
-      /*
-      Получаем ингредиенты рецепта
-      */
       const ingredientsResult = await pool.query(
         `
-        SELECT ri.ingredient_id,
-               ri.quantity,
-               i.name
+        SELECT
+          ri.ingredient_id,
+          ri.quantity,
+          ri.unit,
+          i.name,
+          i.base_unit
         FROM recipe_ingredients ri
         JOIN ingredients i
           ON i.id = ri.ingredient_id
         WHERE ri.recipe_id = $1
         `,
-        [recipe.id],
+        [recipe.id]
       );
 
       const ingredients = ingredientsResult.rows;
-
       const missingIngredients = [];
 
-      /*
-      =========================
-      Проверяем ингредиенты
-      =========================
-      */
       for (const ingredient of ingredients) {
-        const productResult = await pool.query(
+        const availableResult = await pool.query(
           `
-          SELECT COALESCE(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END),
-0) AS quantity
+          SELECT COALESCE(
+            SUM(
+              CASE
+                WHEN normalized_quantity > 0
+                 AND normalized_unit = $3
+                THEN normalized_quantity
+                ELSE 0
+              END
+            ),
+          0) AS available
           FROM products
           WHERE user_id = $1
           AND ingredient_id = $2
           `,
-          [userId, ingredient.ingredient_id],
+          [userId, ingredient.ingredient_id, ingredient.base_unit]
         );
 
-        const availableQty = Number(productResult.rows[0].quantity);
+        const availableQty = Number(availableResult.rows[0].available);
+        const neededQty = Number(ingredient.quantity);
 
-        if (availableQty < ingredient.quantity) {
+        if (availableQty < neededQty) {
           missingIngredients.push({
             name: ingredient.name,
-            needed: ingredient.quantity,
+            needed: neededQty,
             available: availableQty,
+            unit: ingredient.base_unit,
           });
         }
       }
 
-      /*
-      =========================
-      Если не хватает ингредиентов
-      =========================
-      */
       if (missingIngredients.length > 0) {
         recipesWithMissing.push({
           id: recipe.id,
@@ -207,16 +187,11 @@ router.get("/missing", async (req, res) => {
       }
     }
 
-    /*
-    =========================
-    Ответ
-    =========================
-    */
     res.json(recipesWithMissing);
   } catch (err) {
     console.error(
       "Ошибка получения рецептов с недостающими ингредиентами:",
-      err,
+      err
     );
 
     res.status(500).json({
@@ -235,9 +210,7 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    const recipe = await pool.query("SELECT * FROM recipes WHERE id = $1", [
-      id,
-    ]);
+    const recipe = await pool.query("SELECT * FROM recipes WHERE id = $1", [id]);
 
     if (recipe.rows.length === 0) {
       return res.status(404).json({
@@ -247,17 +220,17 @@ router.get("/:id", async (req, res) => {
 
     const ingredients = await pool.query(
       `
-  SELECT
-    ri.ingredient_id,
-    i.name,
-    ri.quantity,
-    ri.unit
-  FROM recipe_ingredients ri
-  JOIN ingredients i
-    ON i.id = ri.ingredient_id
-  WHERE ri.recipe_id = $1
-  `,
-      [id],
+      SELECT
+        ri.ingredient_id,
+        i.name,
+        ri.quantity,
+        ri.unit
+      FROM recipe_ingredients ri
+      JOIN ingredients i
+        ON i.id = ri.ingredient_id
+      WHERE ri.recipe_id = $1
+      `,
+      [id]
     );
 
     res.json({
@@ -278,67 +251,61 @@ GET /api/recipes/:id/check
 */
 router.get("/:id/check", async (req, res) => {
   const recipeId = req.params.id;
-
-  // пока используем тестового пользователя
   const userId = 1;
 
   try {
-    /*
-    ================================
-    1. Получаем ингредиенты рецепта
-    ================================
-    */
     const ingredientsResult = await pool.query(
       `
-  SELECT
-    ri.ingredient_id,
-    i.name,
-    ri.quantity
-  FROM recipe_ingredients ri
-  JOIN ingredients i
-    ON i.id = ri.ingredient_id
-  WHERE ri.recipe_id = $1
-  `,
-      [recipeId],
+      SELECT
+        ri.ingredient_id,
+        i.name,
+        ri.quantity,
+        ri.unit,
+        i.base_unit
+      FROM recipe_ingredients ri
+      JOIN ingredients i
+        ON i.id = ri.ingredient_id
+      WHERE ri.recipe_id = $1
+      `,
+      [recipeId]
     );
 
     const ingredients = ingredientsResult.rows;
-
-    /*
-    ================================
-    2. Проверяем продукты пользователя
-    ================================
-    */
     const missingProducts = [];
 
     for (const ingredient of ingredients) {
-      const productResult = await pool.query(
+      const availableResult = await pool.query(
         `
-    SELECT COALESCE(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END),
-0) AS quantity
-    FROM products
-    WHERE user_id = $1
-    AND ingredient_id = $2
-    `,
-        [userId, ingredient.ingredient_id],
+        SELECT COALESCE(
+          SUM(
+            CASE
+              WHEN normalized_quantity > 0
+               AND normalized_unit = $3
+              THEN normalized_quantity
+              ELSE 0
+            END
+          ),
+        0) AS available
+        FROM products
+        WHERE user_id = $1
+        AND ingredient_id = $2
+        `,
+        [userId, ingredient.ingredient_id, ingredient.base_unit]
       );
 
-      const availableQty = Number(productResult.rows[0].quantity);
+      const availableQty = Number(availableResult.rows[0].available);
+      const neededQty = Number(ingredient.quantity);
 
-      if (availableQty < ingredient.quantity) {
+      if (availableQty < neededQty) {
         missingProducts.push({
           name: ingredient.name,
-          needed: ingredient.quantity,
+          needed: neededQty,
           available: availableQty,
+          unit: ingredient.base_unit,
         });
       }
     }
 
-    /*
-    ================================
-    3. Ответ
-    ================================
-    */
     res.json({
       canCook: missingProducts.length === 0,
       missingProducts,
@@ -366,69 +333,79 @@ router.post("/:id/cook", async (req, res) => {
 
     /*
     ========================
-    1. Получаем ингредиенты
+    1. Получаем ингредиенты рецепта
     ========================
     */
     const ingredientsResult = await client.query(
       `
-      SELECT ri.ingredient_id,
-             ri.quantity,
-             i.name
+      SELECT
+        ri.ingredient_id,
+        ri.quantity,
+        ri.unit,
+        i.name,
+        i.base_unit
       FROM recipe_ingredients ri
       JOIN ingredients i
         ON i.id = ri.ingredient_id
       WHERE ri.recipe_id = $1
       `,
-      [recipeId],
+      [recipeId]
     );
 
     const ingredients = ingredientsResult.rows;
 
     /*
     ========================
-    2. Проверяем наличие
+    2. Проверяем наличие по normalized_quantity
     ========================
     */
     for (const ingredient of ingredients) {
-      const result = await client.query(
+      const availableResult = await client.query(
         `
-        SELECT COALESCE(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END),
-0) AS quantity
+        SELECT COALESCE(
+          SUM(
+            CASE
+              WHEN normalized_quantity > 0
+               AND normalized_unit = $3
+              THEN normalized_quantity
+              ELSE 0
+            END
+          ),
+        0) AS available
         FROM products
         WHERE user_id = $1
         AND ingredient_id = $2
         `,
-        [userId, ingredient.ingredient_id],
+        [userId, ingredient.ingredient_id, ingredient.base_unit]
       );
 
-      const available = Number(result.rows[0].quantity);
+      const availableQty = Number(availableResult.rows[0].available);
+      const neededQty = Number(ingredient.quantity);
 
-      if (available < ingredient.quantity) {
+      if (availableQty < neededQty) {
         throw new Error(`Недостаточно продукта: ${ingredient.name}`);
       }
     }
 
     /*
     ========================
-    3. Списание продуктов
+    3. FIFO-списание по normalized_quantity
     ========================
     */
     for (const ingredient of ingredients) {
       let remaining = Number(ingredient.quantity);
 
-      /*
-  Получаем все продукты этого ингредиента
-  */
       const productsResult = await client.query(
         `
-    SELECT id, quantity
-    FROM products
-    WHERE user_id = $1
-    AND ingredient_id = $2
-    AND quantity > 0
-    ORDER BY created_at
-    `,
-        [userId, ingredient.ingredient_id],
+        SELECT id, normalized_quantity
+        FROM products
+        WHERE user_id = $1
+        AND ingredient_id = $2
+        AND normalized_quantity > 0
+        AND normalized_unit = $3
+        ORDER BY created_at
+        `,
+        [userId, ingredient.ingredient_id, ingredient.base_unit]
       );
 
       const products = productsResult.rows;
@@ -436,28 +413,22 @@ router.post("/:id/cook", async (req, res) => {
       for (const product of products) {
         if (remaining <= 0) break;
 
-        const available = Number(product.quantity);
-
+        const available = Number(product.normalized_quantity);
         const toSubtract = Math.min(available, remaining);
 
         await client.query(
           `
-      UPDATE products
-      SET quantity = quantity - $1
-      WHERE id = $2
-      `,
-          [toSubtract, product.id],
+          UPDATE products
+          SET normalized_quantity = normalized_quantity - $1
+          WHERE id = $2
+          `,
+          [toSubtract, product.id]
         );
 
         remaining -= toSubtract;
       }
     }
 
-    /*
-    ========================
-    SUCCESS
-    ========================
-    */
     await client.query("COMMIT");
 
     res.json({
