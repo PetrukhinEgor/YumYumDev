@@ -107,48 +107,19 @@ function isLikelyFoodProduct(productName) {
     "огур",
     "томат",
     "помидор",
-    "черри",
-    "зелень",
-    "укроп",
-    "петруш",
-    "рукол",
-    "салат",
 
     "куриц",
-    "цыпл",
-    "филе кур",
-    "свинин",
-    "говядин",
     "фарш",
     "мясо",
     "рыба",
-    "вобл",
-    "лосос",
-    "тунец",
-    "карпаччо",
 
     "виноград",
     "киви",
-    "яблок",
-    "банан",
-    "апельсин",
     "клюкв",
-    "маракуй",
 
     "кекс",
     "печенье",
-    "шоколад",
     "чипс",
-    "леден",
-    "завтрак",
-
-    "икра",
-    "краб",
-    "сок",
-    "нектар",
-    "лаваш",
-    "багет",
-    "хлеб",
   ];
 
   return containsAny(name, foodKeywords);
@@ -159,10 +130,24 @@ function matchIngredient(productName) {
 
   const name = cleanName(productName);
 
-  // яйца
-  if (name.includes("яйц")) return "Яйца";
+  /*
+  ========================================
+  🔥 1. ПРИОРИТЕТНЫЕ ПРОВЕРКИ (важно!)
+  ========================================
+  */
 
-  // молочка
+  // ❗ чипсы раньше соли
+  if (name.includes("чипс")) return "Чипсы";
+
+  // ❗ фарш раньше мяса
+  if (name.includes("фарш")) return "Фарш";
+
+  /*
+  ========================================
+  🥛 МОЛОЧКА
+  ========================================
+  */
+
   if (name.includes("молок")) return "Молоко";
   if (name.includes("кефир")) return "Кефир";
   if (name.includes("сметан")) return "Сметана";
@@ -171,13 +156,30 @@ function matchIngredient(productName) {
   if (name.includes("майонез")) return "Майонез";
   if (name.includes("масло")) return "Масло";
 
-  // базовые продукты
+  /*
+  ========================================
+  🥚 БАЗОВЫЕ
+  ========================================
+  */
+
+  if (name.includes("яйц")) return "Яйца";
   if (name.includes("соль")) return "Соль";
   if (name.includes("сахар")) return "Сахар";
   if (name.includes("мука")) return "Мука";
   if (name.includes("рис")) return "Рис";
 
-  if (name.includes("макарон") || name.includes("лапша")) {
+  /*
+  ========================================
+  🌾 КРУПЫ (🔥 исправлено)
+  ========================================
+  */
+
+  if (name.includes("греч")) return "Гречка";
+
+  if (
+    name.includes("макарон") ||
+    name.includes("лапша")
+  ) {
     return "Макароны";
   }
 
@@ -191,80 +193,78 @@ function matchIngredient(productName) {
     return "Фасоль";
   }
 
-  // овощи
+  /*
+  ========================================
+  🥕 ОВОЩИ
+  ========================================
+  */
+
   if (name.includes("капуст")) return "Капуста";
   if (name.includes("картоф")) return "Картофель";
   if (name.includes("морков")) return "Морковь";
 
-  if (name.includes("лук зелен")) return "Лук";
   if (name.includes("лук")) return "Лук";
-
   if (name.includes("чеснок")) return "Чеснок";
   if (name.includes("свекл")) return "Свекла";
   if (name.includes("огур")) return "Огурец";
 
   if (
     name.includes("томат") ||
-    name.includes("помидор") ||
-    name.includes("черри")
+    name.includes("помидор")
   ) {
     return "Помидор";
   }
 
-  if (name.includes("укроп")) return "Укроп";
-  if (name.includes("рукол")) return "Рукола";
-  if (name.includes("петруш")) return "Зелень";
-  if (name.includes("зелень")) return "Зелень";
-  if (name.includes("салат")) return "Салат";
+  /*
+  ========================================
+  🍗 МЯСО
+  ========================================
+  */
 
-  // мясо / птица
-  if (
-    name.includes("куриц") ||
-    name.includes("цыпл") ||
-    name.includes("филе кур") ||
-    name.includes("карпаччо")
-  ) {
+  if (name.includes("куриц") || name.includes("цыпл")) {
     return "Курица";
   }
 
-  if (name.includes("свинин") || name.includes("стейк свиной")) {
-    return "Свинина";
-  }
+  if (name.includes("свинин")) return "Свинина";
+  if (name.includes("говядин")) return "Говядина";
 
-  if (name.includes("говядин")) {
-    return "Говядина";
-  }
+  /*
+  ========================================
+  🐟 РЫБА
+  ========================================
+  */
 
-  // рыба
   if (
-    name.includes("вобл") ||
     name.includes("рыба") ||
+    name.includes("вобл") ||
     name.includes("лосос") ||
     name.includes("тунец")
   ) {
     return "Рыба";
   }
 
-  // фрукты / ягоды
-  if (name.includes("виноград")) return "Виноград";
-  if (name.includes("киви")) return "Киви";
-  if (name.includes("клюкв")) return "Клюква";
-  if (name.includes("маракуй")) return "Маракуйя";
+  /*
+  ========================================
+  🍞 ХЛЕБ
+  ========================================
+  */
 
-  // выпечка / снеки
-  if (name.includes("кекс")) return "Кекс";
-  if (name.includes("печенье")) return "Печенье";
-  if (name.includes("чипс")) return "Чипсы";
-  if (name.includes("леден")) return "Леденцы";
-
-  // напитки
-  if (name.includes("нектар")) return "Нектар";
-  if (name.includes("сок")) return "Сок";
-
-  // хлебное
   if (name.includes("лаваш")) return "Лаваш";
   if (name.includes("багет")) return "Багет";
   if (name.includes("хлеб")) return "Хлеб";
+
+  /*
+  ========================================
+  🍭 ПРОЧЕЕ
+  ========================================
+  */
+
+  if (name.includes("печенье")) return "Печенье";
+  if (name.includes("кекс")) return "Кекс";
+  if (name.includes("леден")) return "Леденцы";
+
+  if (name.includes("сок")) return "Сок";
+  if (name.includes("нектар")) return "Нектар";
 
   return null;
 }

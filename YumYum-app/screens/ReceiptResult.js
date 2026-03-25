@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import axios from "axios";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ReceiptResult({ route }) {
   const { qrData } = route.params;
@@ -43,18 +44,22 @@ export default function ReceiptResult({ route }) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Обрабатываем чек...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#28B3AC" />
+          <Text style={styles.loadingText}>Обрабатываем чек...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.center}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -65,53 +70,55 @@ export default function ReceiptResult({ route }) {
   const skippedCount = data?.skippedCount ?? skippedItems.length;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Результат сканирования чека</Text>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Результат сканирования чека</Text>
 
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryText}>Всего товаров: {totalItems}</Text>
-        <Text style={styles.summaryText}>Сохранено: {savedCount}</Text>
-        <Text style={styles.summaryText}>Пропущено: {skippedCount}</Text>
-      </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryText}>Всего товаров: {totalItems}</Text>
+          <Text style={styles.summaryText}>Сохранено: {savedCount}</Text>
+          <Text style={styles.summaryText}>Пропущено: {skippedCount}</Text>
+        </View>
 
-      <Text style={styles.sectionTitle}>Сохранённые товары</Text>
+        <Text style={styles.sectionTitle}>Сохранённые товары</Text>
 
-      {savedItems.length === 0 ? (
-        <Text style={styles.emptyText}>Нет сохранённых товаров</Text>
-      ) : (
-        savedItems.map((item, index) => (
-          <View key={`saved-${index}`} style={styles.card}>
-            <Text style={styles.itemName}>{item.name}</Text>
+        {savedItems.length === 0 ? (
+          <Text style={styles.emptyText}>Нет сохранённых товаров</Text>
+        ) : (
+          savedItems.map((item, index) => (
+            <View key={`saved-${index}`} style={styles.card}>
+              <Text style={styles.itemName}>{item.name}</Text>
 
-            <Text style={styles.itemText}>
-              Ингредиент: {item.ingredientName || "не определён"}
-            </Text>
+              <Text style={styles.itemText}>
+                Ингредиент: {item.ingredientName || "не определён"}
+              </Text>
 
-            <Text style={styles.itemText}>
-              Нормализованное количество:{" "}
-              {item.normalizedQuantity != null
-                ? `${item.normalizedQuantity} ${item.normalizedUnit || ""}`
-                : "не удалось определить"}
-            </Text>
-          </View>
-        ))
-      )}
+              <Text style={styles.itemText}>
+                Нормализованное количество:{" "}
+                {item.normalizedQuantity != null
+                  ? `${item.normalizedQuantity} ${item.normalizedUnit || ""}`
+                  : "не удалось определить"}
+              </Text>
+            </View>
+          ))
+        )}
 
-      <Text style={styles.sectionTitle}>Пропущенные товары</Text>
+        <Text style={styles.sectionTitle}>Пропущенные товары</Text>
 
-      {skippedItems.length === 0 ? (
-        <Text style={styles.emptyText}>Нет пропущенных товаров</Text>
-      ) : (
-        skippedItems.map((item, index) => (
-          <View key={`skipped-${index}`} style={styles.cardSkipped}>
-            <Text style={styles.itemName}>{item.name}</Text>
-            <Text style={styles.itemText}>
-              Причина: {translateSkipReason(item.reason)}
-            </Text>
-          </View>
-        ))
-      )}
-    </ScrollView>
+        {skippedItems.length === 0 ? (
+          <Text style={styles.emptyText}>Нет пропущенных товаров</Text>
+        ) : (
+          skippedItems.map((item, index) => (
+            <View key={`skipped-${index}`} style={styles.cardSkipped}>
+              <Text style={styles.itemName}>{item.name}</Text>
+              <Text style={styles.itemText}>
+                Причина: {translateSkipReason(item.reason)}
+              </Text>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -129,13 +136,17 @@ function translateSkipReason(reason) {
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F4F4F4",
+  },
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#F4F4F4",
   },
   content: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   center: {
     flex: 1,
@@ -153,50 +164,57 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
     marginBottom: 16,
+    color: "#28B3AC",
   },
   summaryCard: {
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
     padding: 16,
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#E8E8E8",
   },
   summaryText: {
     fontSize: 16,
     marginBottom: 6,
+    color: "#333",
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 12,
     marginTop: 8,
+    color: "#F6A347",
   },
   card: {
-    backgroundColor: "#eefbf1",
-    borderRadius: 12,
+    backgroundColor: "#ECFBF7",
+    borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#ccebd4",
+    borderColor: "#CBECE3",
   },
   cardSkipped: {
-    backgroundColor: "#fff4f4",
-    borderRadius: 12,
+    backgroundColor: "#FFF4F1",
+    borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#f3c7c7",
+    borderColor: "#F5D2C9",
   },
   itemName: {
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 8,
+    color: "#222",
   },
   itemText: {
     fontSize: 14,
     marginBottom: 4,
+    color: "#444",
   },
   emptyText: {
     fontSize: 15,

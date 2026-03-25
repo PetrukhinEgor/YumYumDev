@@ -95,16 +95,39 @@ router.post("/scan", async (req, res) => {
         }
       }
 
-      if (baseUnit) {
-        const parsedAmount = parseProductAmount(
-          originalName,
-          baseUnit,
-          ingredientName
-        );
+      /*
+      ========================================
+      🔥 НОВАЯ ЛОГИКА НОРМАЛИЗАЦИИ
+      ========================================
+      */
 
-        normalizedQuantity = parsedAmount.normalizedQuantity;
-        normalizedUnit = parsedAmount.normalizedUnit;
-      }
+if (baseUnit) {
+  const receiptQuantity = item.quantity;
+
+  const parsedAmount = parseProductAmount(
+    originalName,
+    baseUnit,
+    ingredientName
+  );
+
+  // ✅ 1. ВЕСОВОЙ товар (самое важное)
+  if (receiptQuantity && receiptQuantity > 0 && receiptQuantity < 1) {
+    normalizedQuantity = Math.round(receiptQuantity * 1000);
+    normalizedUnit = "g";
+  }
+
+  // ✅ 2. УПАКОВКА (350г, 900г и т.д.)
+  else if (parsedAmount?.normalizedQuantity) {
+    normalizedQuantity = parsedAmount.normalizedQuantity;
+    normalizedUnit = parsedAmount.normalizedUnit;
+  }
+
+  // ✅ 3. fallback — штуки
+  else if (receiptQuantity && receiptQuantity >= 1) {
+    normalizedQuantity = receiptQuantity;
+    normalizedUnit = "pcs";
+  }
+}
 
       await pool.query(
         `
