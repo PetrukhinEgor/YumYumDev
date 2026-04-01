@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { API_URL } from "../config/api";
 
 export default function ReceiptResult({ route }) {
   const { qrData } = route.params;
@@ -18,13 +19,37 @@ export default function ReceiptResult({ route }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  // useEffect(() => {
+  //   const loadReceipt = async () => {
+  //     try {
+  //       console.log("QR DATA:", qrData);
+
+  //       const res = await axios.post(
+  //         "http://192.168.1.138:5000/api/receipts/scan",
+  //         { qr: qrData },
+  //         { timeout: 10000 }
+  //       );
+
+  //       console.log("RESPONSE:", res.data);
+  //       setData(res.data);
+  //     } catch (err) {
+  //       console.log("ERROR:", err.message);
+  //       setError("Не удалось обработать чек");
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   };
+
+  //   loadReceipt();
+  // }, [qrData]);
+
+    useEffect(() => {
     const loadReceipt = async () => {
       try {
         console.log("QR DATA:", qrData);
 
         const res = await axios.post(
-          "http://192.168.1.138:5000/api/receipts/scan",
+          `${API_URL}/api/receipts/scan`,
           { qr: qrData },
           { timeout: 10000 }
         );

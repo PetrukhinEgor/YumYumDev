@@ -85,33 +85,15 @@ export default function RecipeDetailsScreen({ route, navigation }) {
     );
   };
 
-  const handleAddToShoppingList = async () => {
-    try {
-      setActionLoading(true);
-
-      const res = await axios.post(`${API_URL}/api/shopping-list`, {
+  const handleOpenShoppingList = () => {
+    navigation.getParent()?.navigate("ShoppingTab", {
+      screen: "ShoppingList",
+      params: {
         recipes: [recipeId],
-      });
-
-      const items = res.data?.shoppingList || [];
-
-      if (items.length === 0) {
-        Alert.alert("Список покупок", "Ничего добавлять не нужно");
-        return;
-      }
-
-      const message = items
-        .map((item) => `${item.name} — купить ${Number(item.toBuy)} ${item.unit}`)
-        .join("\n");
-
-      Alert.alert("Добавлено в список покупок", message);
-    } catch (err) {
-      const errorText =
-        err.response?.data?.error || "Не удалось сформировать список покупок";
-      Alert.alert("Ошибка", errorText);
-    } finally {
-      setActionLoading(false);
-    }
+        recipeNames: recipe?.name ? [recipe.name] : [],
+        requestKey: `${recipeId}-${Date.now()}`,
+      },
+    });
   };
 
   if (loading) {
@@ -193,7 +175,7 @@ export default function RecipeDetailsScreen({ route, navigation }) {
           <Text style={styles.statusDescription}>
             {canCook
               ? "Ниже показано, сколько ингредиентов есть и сколько останется после приготовления."
-              : "Ниже показано, чего не хватает и что стоит добавить в список покупок."}
+              : "Ниже показано, чего не хватает. Можно открыть список покупок для этого блюда."}
           </Text>
         </View>
 
@@ -273,18 +255,13 @@ export default function RecipeDetailsScreen({ route, navigation }) {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={[
-              styles.secondaryActionButton,
-              actionLoading && styles.buttonDisabled,
-            ]}
+            style={[styles.secondaryActionButton, actionLoading && styles.buttonDisabled]}
             activeOpacity={0.9}
-            onPress={handleAddToShoppingList}
+            onPress={handleOpenShoppingList}
             disabled={actionLoading}
           >
             <Text style={styles.secondaryActionButtonText}>
-              {actionLoading
-                ? "Формируем список..."
-                : "Добавить недостающее в список покупок"}
+              Открыть список покупок
             </Text>
           </TouchableOpacity>
         )}

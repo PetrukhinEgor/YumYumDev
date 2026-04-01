@@ -1,6 +1,6 @@
 // YumYum-app/screens/HomeScreen.js
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,16 +8,21 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { API_URL } from "../config/api";
 
-const API_URL = "http://192.168.1.138:5000";
-
-export default function HomeScreen({ navigation }) {
+export default function HomeScreen({ navigation, route }) {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedRecipeIds, setSelectedRecipeIds] = useState([]);
+
+  const clearSelectionKey = route?.params?.clearSelectionKey;
 
   const loadRecipes = useCallback(async () => {
     try {
@@ -38,19 +43,87 @@ export default function HomeScreen({ navigation }) {
     }, [loadRecipes])
   );
 
+  useEffect(() => {
+    if (!clearSelectionKey) return;
+
+    setSelectionMode(false);
+    setSelectedRecipeIds([]);
+
+    navigation.setParams({
+      clearSelectionKey: undefined,
+    });
+  }, [clearSelectionKey, navigation]);
+
+  const selectedRecipeNames = useMemo(() => {
+    return recipes
+      .filter((recipe) => selectedRecipeIds.includes(recipe.id))
+      .map((recipe) => recipe.name);
+  }, [recipes, selectedRecipeIds]);
+
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedRecipeIds([]);
+    } else {
+      setSelectionMode(true);
+    }
+  };
+
+  const toggleRecipeSelection = (recipeId) => {
+    setSelectedRecipeIds((prev) => {
+      if (prev.includes(recipeId)) {
+        return prev.filter((id) => id !== recipeId);
+      }
+      return [...prev, recipeId];
+    });
+  };
+
+  const openShoppingListForSelected = () => {
+    if (!selectedRecipeIds.length) {
+      Alert.alert("Список покупок", "Сначала выбери хотя бы один рецепт");
+      return;
+    }
+
+    navigation.getParent()?.navigate("ShoppingTab", {
+      screen: "ShoppingList",
+      params: {
+        recipes: selectedRecipeIds,
+        recipeNames: selectedRecipeNames,
+        requestKey: `${selectedRecipeIds.join("-")}-${Date.now()}`,
+      },
+    });
+  };
+
   const renderRecipeCard = ({ item }) => {
     const canCook = !!item.can_cook;
+    const isSelected = selectedRecipeIds.includes(item.id);
+
+    const handlePress = () => {
+      if (selectionMode) {
+        toggleRecipeSelection(item.id);
+      } else {
+        navigation.navigate("RecipeDetails", {
+          recipeId: item.id,
+        });
+      }
+    };
 
     return (
       <TouchableOpacity
-        style={[styles.card, canCook ? styles.cardCookable : styles.cardMissing]}
+        style={[
+          styles.card,
+          canCook ? styles.cardCookable : styles.cardMissing,
+          isSelected && styles.cardSelected,
+        ]}
         activeOpacity={0.9}
-        onPress={() =>
-          navigation.navigate("RecipeDetails", {
-            recipeId: item.id,
-          })
-        }
+        onPress={handlePress}
       >
+        {selectionMode ? (
+          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+            <Text style={styles.checkboxText}>{isSelected ? "✓" : ""}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.imageCircle}>
           <Text style={styles.imageEmoji}>{getRecipeEmoji(item.name)}</Text>
         </View>
@@ -98,7 +171,24 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.sectionTitle}>Рекомендуем</Text>
+          <View style={styles.topRow}>
+            <Text style={styles.sectionTitle}>Рекомендуем</Text>
+
+            <TouchableOpacity
+              style={styles.selectButton}
+              onPress={toggleSelectionMode}
+            >
+              <Text style={styles.selectButtonText}>
+                {selectionMode ? "Отмена" : "Выбрать"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {selectionMode ? (
+            <Text style={styles.selectionHint}>
+              Выбери несколько рецептов, чтобы собрать общий список покупок
+            </Text>
+          ) : null}
 
           {loading ? (
             <View style={styles.center}>
@@ -120,6 +210,17 @@ export default function HomeScreen({ navigation }) {
               showsVerticalScrollIndicator={false}
             />
           )}
+
+          {selectionMode && selectedRecipeIds.length > 0 ? (
+            <TouchableOpacity
+              style={styles.shoppingButton}
+              onPress={openShoppingListForSelected}
+            >
+              <Text style={styles.shoppingButtonText}>
+                Список покупок для выбранных блюд ({selectedRecipeIds.length})
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </SafeAreaView>
@@ -168,90 +269,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 24,
   },
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   sectionTitle: {
     fontSize: 30,
     fontWeight: "700",
     color: "#F6A347",
     marginBottom: 18,
   },
-  listContent: {
-    paddingBottom: 120,
-  },
-  row: {
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  card: {
-    width: "48%",
-    minHeight: 245,
-    borderRadius: 28,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 16,
-    alignItems: "center",
-    borderWidth: 1,
-  },
-  cardCookable: {
-    backgroundColor: "#DDF6F0",
-    borderColor: "#9EDFD0",
-  },
-  cardMissing: {
-    backgroundColor: "#F4F4F4",
-    borderColor: "#DFDFDF",
-  },
-  imageCircle: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#ECECEC",
-  },
-  imageEmoji: {
-    fontSize: 40,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    textAlign: "center",
-    color: "#333",
-    marginBottom: 8,
-    minHeight: 40,
-  },
-  cardMeta: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 4,
-  },
-  statusBadge: {
-    marginTop: 10,
-    borderRadius: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  statusBadgeCookable: {
+  selectButton: {
     backgroundColor: "#28B3AC",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginBottom: 12,
   },
-  statusBadgeMissing: {
-    backgroundColor: "#E6E6E6",
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  statusBadgeTextCookable: {
+  selectButtonText: {
     color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
   },
-  statusBadgeTextMissing: {
-    color: "#666666",
+  selectionHint: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 12,
+    lineHeight: 20,
   },
   center: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    marginTop: 40,
   },
   loadingText: {
     marginTop: 12,
@@ -261,6 +311,129 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: "#666",
-    lineHeight: 24,
+    lineHeight: 22,
+    textAlign: "center",
+    marginTop: 20,
+  },
+  listContent: {
+    paddingBottom: 140,
+  },
+  row: {
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  card: {
+    width: "48%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E9E9E9",
+    position: "relative",
+  },
+  cardCookable: {
+    backgroundColor: "#E8FAF7",
+    borderColor: "#BDEAE2",
+  },
+  cardMissing: {
+    backgroundColor: "#FAFAFA",
+    borderColor: "#ECECEC",
+  },
+  cardSelected: {
+    borderColor: "#F6A347",
+    borderWidth: 2,
+  },
+  checkbox: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: "#CFCFCF",
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  checkboxSelected: {
+    backgroundColor: "#F6A347",
+    borderColor: "#F6A347",
+  },
+  checkboxText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  imageCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#FFF3E4",
+    justifyContent: "center",
+    alignItems: "center",
+    alignSelf: "center",
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  imageEmoji: {
+    fontSize: 28,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#222",
+    textAlign: "center",
+    minHeight: 42,
+  },
+  cardMeta: {
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 6,
+  },
+  statusBadge: {
+    marginTop: 12,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  statusBadgeCookable: {
+    backgroundColor: "#D8F4EE",
+  },
+  statusBadgeMissing: {
+    backgroundColor: "#F1F1F1",
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  statusBadgeTextCookable: {
+    color: "#1E8F80",
+  },
+  statusBadgeTextMissing: {
+    color: "#777",
+  },
+  shoppingButton: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 18,
+    backgroundColor: "#F6A347",
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  shoppingButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 15,
   },
 });

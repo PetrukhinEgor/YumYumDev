@@ -14,8 +14,9 @@ import {
 import axios from "axios";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { API_URL } from "../config/api";
 
-const API_URL = "http://192.168.1.138:5000";
+// const API_URL = "http://192.168.1.138:5000";
 
 export default function ProductsScreen() {
   const [products, setProducts] = useState([]);

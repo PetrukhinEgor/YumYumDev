@@ -1,26 +1,57 @@
-//YumYum-server/index.js
-require('dotenv').config()
-const express = require('express')
-const cors = require('cors')
-const initDb = require('./initDb')
+// //YumYum-server/index.js
+// require("dotenv").config();
+// const express = require("express");
+// const cors = require("cors");
+// const initDb = require("./initDb");
 
+// const app = express();
 
+// app.use(cors());
+// app.use(express.json());
 
+// app.use("/api/receipts", require("./routes/receipts.routes"));
+// app.use("/api/products", require("./routes/products.routes"));
+// app.use("/api/recipes", require("./routes/recipes.routes"));
+// app.use("/api/shopping-list", require("./routes/shopping.routes"));
 
-const app = express()
+// const PORT = process.env.PORT || 5000;
 
-app.use(cors())
-app.use(express.json())
+// initDb().then(() => {
+//   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// });
 
-app.use('/api/receipts', require('./routes/receipts.routes'))
-app.use('/api/products', require('./routes/products.routes'))
-app.use("/api/recipes", require("./routes/recipes.routes"));
-app.use("/api/shopping-list", require("./routes/shopping.routes"));
+// YumYum-server/index.js
 
+const express = require("express");
+const cors = require("cors");
+require("dotenv").config();
 
+const initDb = require("./initDb");
 
-const PORT = process.env.PORT || 5000
+// const authRoutes = require("./routes/auth.routes");
+const receiptRoutes = require("./routes/receipts.routes");
+const productRoutes = require("./routes/products.routes");
+const recipeRoutes = require("./routes/recipes.routes");
+const shoppingRoutes = require("./routes/shopping.routes");
 
-initDb().then(() => {
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
-})
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.use(cors());
+app.use(express.json());
+
+// app.use("/api/auth", authRoutes);
+app.use("/api/receipts", receiptRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/recipes", recipeRoutes);
+app.use("/api/shopping-list", shoppingRoutes);
+
+initDb();
+
+app.get("/", (req, res) => {
+  res.send("YumYum API is running");
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+});
