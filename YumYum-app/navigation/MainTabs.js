@@ -3,7 +3,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import HomeStack from "./HomeStack";
 import ScanStack from "./ScanStack";
@@ -13,11 +12,6 @@ import ProductsScreen from "../screens/ProductsScreen";
 const Tab = createBottomTabNavigator();
 
 export default function MainTabs() {
-  const insets = useSafeAreaInsets();
-
-  const tabBarBottom = Math.max(insets.bottom, 10);
-  const tabBarHeight = 72;
-
   return (
     <Tab.Navigator
       screenOptions={{
@@ -29,19 +23,22 @@ export default function MainTabs() {
         },
 
         tabBarStyle: {
+          height: 100,
           backgroundColor: "#28B3AC",
           borderTopWidth: 0,
-          borderRadius: 24,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
           elevation: 12,
           shadowColor: "#000",
-          shadowOpacity: 0.18,
+          shadowOpacity: 0.14,
           shadowRadius: 10,
-          shadowOffset: { width: 0, height: 4 },
-          overflow: "hidden",
+          shadowOffset: { width: 0, height: -2 },
+          paddingTop: 10,
+          paddingBottom: 10,
         },
 
         tabBarItemStyle: {
-          paddingVertical: 8,
+          paddingVertical: 4,
         },
 
         tabBarBackground: () => (
@@ -56,7 +53,7 @@ export default function MainTabs() {
         component={HomeStack}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabButton label="⌂" focused={focused} />
+            <TabButton label="🏠" focused={focused} />
           ),
         }}
       />
@@ -66,7 +63,7 @@ export default function MainTabs() {
         component={ScanStack}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabButton label="＋" focused={focused} center />
+            <TabButton label="👁️" focused={focused} center />
           ),
         }}
       />
@@ -76,7 +73,7 @@ export default function MainTabs() {
         component={ProductsScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabButton label="▦" focused={focused} />
+            <TabButton label="📋" focused={focused} />
           ),
         }}
       />
@@ -99,8 +96,8 @@ function TabButton({ label, focused, center = false }) {
     <View
       style={[
         styles.iconWrapper,
-        center && styles.centerIconWrapper,
         focused && styles.iconWrapperFocused,
+        center && styles.centerIconWrapper,
         center && focused && styles.centerIconWrapperFocused,
       ]}
     >
@@ -121,44 +118,34 @@ const styles = StyleSheet.create({
   tabBarBackground: {
     flex: 1,
     backgroundColor: "#28B3AC",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#28B3AC",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
 
   tabBarGlow: {
     position: "absolute",
     top: 0,
-    left: 18,
-    right: 18,
+    left: 24,
+    right: 24,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
   iconWrapper: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
   },
 
-  centerIconWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginTop: -22,
-    backgroundColor: "#F6A347",
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
-  },
-
   iconWrapperFocused: {
     backgroundColor: "rgba(255,255,255,0.14)",
+  },
+
+  centerIconWrapper: {
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   centerIconWrapperFocused: {
@@ -176,8 +163,7 @@ const styles = StyleSheet.create({
   },
 
   centerIconText: {
-    fontSize: 28,
-    color: "#FFFFFF",
-    lineHeight: 30,
+    fontSize: 24,
+    lineHeight: 26,
   },
 });

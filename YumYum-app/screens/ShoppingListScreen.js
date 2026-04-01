@@ -66,13 +66,6 @@ export default function ShoppingListScreen({ route, navigation }) {
     }).length;
   }, [shoppingList, checkedItems]);
 
-  const handleInfo = () => {
-    Alert.alert(
-      "Список покупок",
-      "Отмечай галочкой товары, которые уже купил. Когда всё куплено, можно очистить список и сбросить выбранные рецепты."
-    );
-  };
-
   const toggleChecked = (item, index) => {
     const itemKey = getItemKey(item, index);
 
@@ -215,20 +208,16 @@ export default function ShoppingListScreen({ route, navigation }) {
           />
         )}
 
-        <View style={styles.bottomButtons}>
-          <TouchableOpacity style={styles.infoButton} onPress={handleInfo}>
-            <Text style={styles.infoButtonText}>Что показывает экран?</Text>
-          </TouchableOpacity>
-
-          {hasRecipes ? (
+        {hasRecipes ? (
+          <View style={styles.bottomButtons}>
             <TouchableOpacity
               style={styles.clearButton}
               onPress={handleClearShoppingList}
             >
               <Text style={styles.clearButtonText}>Очистить список покупок</Text>
             </TouchableOpacity>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -296,7 +285,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   listContent: {
-    paddingBottom: 180,
+    paddingBottom: 110,
   },
   card: {
     backgroundColor: "#FFFFFF",
@@ -388,20 +377,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 20,
-  },
-  infoButton: {
-    backgroundColor: "#28B3AC",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  infoButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: 14,
+    bottom: 16,
   },
   clearButton: {
     backgroundColor: "#F6A347",
@@ -409,6 +385,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 16,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   clearButtonText: {
     color: "#FFFFFF",
