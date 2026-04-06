@@ -9,6 +9,7 @@ async function getRecipeIngredients(recipeId) {
     `
     SELECT
       ri.ingredient_id,
+      ri.product_name,
       ri.quantity,
       ri.unit,
       i.name,
@@ -40,7 +41,7 @@ async function getAvailableQuantity(userId, ingredientId, baseUnit) {
     0) AS available
     FROM products
     WHERE user_id = $1
-    AND ingredient_id = $2
+      AND ingredient_id = $2
     `,
     [userId, ingredientId, baseUnit]
   );
@@ -57,7 +58,8 @@ async function buildRecipeCheck(userId, recipeId) {
       description,
       cooking_time_min,
       servings,
-      recipe_steps
+      recipe_steps,
+      category
     FROM recipes
     WHERE id = $1
     `,
@@ -115,12 +117,6 @@ async function buildRecipeCheck(userId, recipeId) {
   };
 }
 
-/*
-================================
-Получить все рецепты
-GET /api/recipes
-================================
-*/
 router.get("/", async (req, res) => {
   const userId = 1;
 
@@ -132,9 +128,10 @@ router.get("/", async (req, res) => {
         description,
         cooking_time_min,
         servings,
-        recipe_steps
+        recipe_steps,
+        category
       FROM recipes
-      ORDER BY id
+      ORDER BY id DESC
     `);
 
     const recipes = [];
@@ -155,12 +152,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-/*
-================================
-Получить доступные рецепты
-GET /api/recipes/available
-================================
-*/
 router.get("/available", async (req, res) => {
   const userId = 1;
 
@@ -172,9 +163,10 @@ router.get("/available", async (req, res) => {
         description,
         cooking_time_min,
         servings,
-        recipe_steps
+        recipe_steps,
+        category
       FROM recipes
-      ORDER BY id
+      ORDER BY id DESC
     `);
 
     const availableRecipes = [];
@@ -199,12 +191,6 @@ router.get("/available", async (req, res) => {
   }
 });
 
-/*
-================================
-Рецепты с недостающими ингредиентами
-GET /api/recipes/missing
-================================
-*/
 router.get("/missing", async (req, res) => {
   const userId = 1;
 
@@ -216,9 +202,10 @@ router.get("/missing", async (req, res) => {
         description,
         cooking_time_min,
         servings,
-        recipe_steps
+        recipe_steps,
+        category
       FROM recipes
-      ORDER BY id
+      ORDER BY id DESC
     `);
 
     const recipesWithMissing = [];
@@ -248,12 +235,147 @@ router.get("/missing", async (req, res) => {
   }
 });
 
-/*
-================================
-Получить рецепт с ингредиентами
-GET /api/recipes/:id
-================================
-*/
+router.post("/", async (req, res) => {
+  const {
+    name,
+    description,
+    cooking_time_min,
+    servings,
+    recipe_steps,
+    category,
+    ingredients,
+  } = req.body;
+
+  const trimmedName = String(name || "").trim();
+  const trimmedDescription = String(description || "").trim();
+  const normalizedCategory = String(category || "Другое").trim() || "Другое";
+
+  const parsedCookingTime =
+    cooking_time_min === "" || cooking_time_min == null
+      ? null
+      : Number(cooking_time_min);
+
+  const parsedServings =
+    servings === "" || servings == null ? null : Number(servings);
+
+  const normalizedSteps = Array.isArray(recipe_steps)
+    ? recipe_steps.map((step) => String(step || "").trim()).filter(Boolean)
+    : [];
+
+  const normalizedIngredients = Array.isArray(ingredients)
+    ? ingredients
+        .map((item) => ({
+          name: String(item?.name || "").trim(),
+          quantity: Number(item?.quantity),
+          unit: String(item?.unit || "").trim().toLowerCase(),
+        }))
+        .filter((item) => item.name && item.quantity > 0 && item.unit)
+    : [];
+
+  if (!trimmedName) {
+    return res.status(400).json({
+      error: "Название рецепта обязательно",
+    });
+  }
+
+  if (!normalizedIngredients.length) {
+    return res.status(400).json({
+      error: "Нужно добавить хотя бы один ингредиент",
+    });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const recipeInsertResult = await client.query(
+      `
+      INSERT INTO recipes (
+        name,
+        description,
+        cooking_time_min,
+        servings,
+        recipe_steps,
+        category
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+      `,
+      [
+        trimmedName,
+        trimmedDescription || null,
+        Number.isNaN(parsedCookingTime) ? null : parsedCookingTime,
+        Number.isNaN(parsedServings) ? null : parsedServings,
+        normalizedSteps,
+        normalizedCategory,
+      ]
+    );
+
+    const recipeId = recipeInsertResult.rows[0].id;
+
+    for (const ingredient of normalizedIngredients) {
+      const ingredientResult = await client.query(
+        `
+        SELECT id, name, base_unit
+        FROM ingredients
+        WHERE LOWER(name) = LOWER($1)
+        LIMIT 1
+        `,
+        [ingredient.name]
+      );
+
+      if (ingredientResult.rows.length === 0) {
+        throw new Error(`Ингредиент "${ingredient.name}" не найден`);
+      }
+
+      const ingredientRow = ingredientResult.rows[0];
+
+      if (ingredient.unit !== ingredientRow.base_unit) {
+        throw new Error(
+          `Для ингредиента "${ingredientRow.name}" используй единицу "${ingredientRow.base_unit}"`
+        );
+      }
+
+      await client.query(
+        `
+        INSERT INTO recipe_ingredients (
+          recipe_id,
+          ingredient_id,
+          product_name,
+          quantity,
+          unit
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        `,
+        [
+          recipeId,
+          ingredientRow.id,
+          ingredientRow.name,
+          ingredient.quantity,
+          ingredient.unit,
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      message: "Рецепт создан",
+      recipeId,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Ошибка создания рецепта:", err);
+
+    res.status(400).json({
+      error: err.message || "Не удалось создать рецепт",
+    });
+  } finally {
+    client.release();
+  }
+});
+
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -266,7 +388,8 @@ router.get("/:id", async (req, res) => {
         description,
         cooking_time_min,
         servings,
-        recipe_steps
+        recipe_steps,
+        category
       FROM recipes
       WHERE id = $1
       `,
@@ -283,6 +406,7 @@ router.get("/:id", async (req, res) => {
       `
       SELECT
         ri.ingredient_id,
+        ri.product_name,
         i.name,
         ri.quantity,
         ri.unit
@@ -305,12 +429,6 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-/*
-================================
-Проверка возможности приготовления
-GET /api/recipes/:id/check
-================================
-*/
 router.get("/:id/check", async (req, res) => {
   const recipeId = req.params.id;
   const userId = 1;
@@ -331,12 +449,6 @@ router.get("/:id/check", async (req, res) => {
   }
 });
 
-/*
-================================
-Приготовить рецепт
-POST /api/recipes/:id/cook
-================================
-*/
 router.post("/:id/cook", async (req, res) => {
   const recipeId = req.params.id;
   const userId = 1;
@@ -363,6 +475,7 @@ router.post("/:id/cook", async (req, res) => {
       `
       SELECT
         ri.ingredient_id,
+        ri.product_name,
         ri.quantity,
         ri.unit,
         i.name,
@@ -392,7 +505,7 @@ router.post("/:id/cook", async (req, res) => {
         0) AS available
         FROM products
         WHERE user_id = $1
-        AND ingredient_id = $2
+          AND ingredient_id = $2
         `,
         [userId, ingredient.ingredient_id, ingredient.base_unit]
       );
@@ -413,9 +526,9 @@ router.post("/:id/cook", async (req, res) => {
         SELECT id, normalized_quantity
         FROM products
         WHERE user_id = $1
-        AND ingredient_id = $2
-        AND normalized_quantity > 0
-        AND normalized_unit = $3
+          AND ingredient_id = $2
+          AND normalized_quantity > 0
+          AND normalized_unit = $3
         ORDER BY created_at
         `,
         [userId, ingredient.ingredient_id, ingredient.base_unit]
@@ -454,6 +567,59 @@ router.post("/:id/cook", async (req, res) => {
 
     res.status(400).json({
       error: err.message,
+    });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  const recipeId = req.params.id;
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const recipeResult = await client.query(
+      `
+      SELECT id
+      FROM recipes
+      WHERE id = $1
+      `,
+      [recipeId]
+    );
+
+    if (recipeResult.rows.length === 0) {
+      throw new Error("Рецепт не найден");
+    }
+
+    await client.query(
+      `
+      DELETE FROM recipe_ingredients
+      WHERE recipe_id = $1
+      `,
+      [recipeId]
+    );
+
+    await client.query(
+      `
+      DELETE FROM recipes
+      WHERE id = $1
+      `,
+      [recipeId]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: "Рецепт удалён",
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Ошибка удаления рецепта:", err);
+
+    res.status(400).json({
+      error: err.message || "Не удалось удалить рецепт",
     });
   } finally {
     client.release();

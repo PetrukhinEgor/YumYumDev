@@ -13,8 +13,7 @@ import {
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-
-const API_URL = "http://192.168.1.138:5000";
+import { API_URL } from "../config/api";
 
 export default function RecipeDetailsScreen({ route, navigation }) {
   const { recipeId } = route.params;
@@ -23,6 +22,7 @@ export default function RecipeDetailsScreen({ route, navigation }) {
   const [checkData, setCheckData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -78,6 +78,38 @@ export default function RecipeDetailsScreen({ route, navigation }) {
               Alert.alert("Ошибка", errorText);
             } finally {
               setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteRecipe = async () => {
+    Alert.alert(
+      "Удалить рецепт",
+      "Рецепт и его ингредиенты будут удалены. Продолжить?",
+      [
+        { text: "Отмена", style: "cancel" },
+        {
+          text: "Удалить",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setDeleteLoading(true);
+              await axios.delete(`${API_URL}/api/recipes/${recipeId}`);
+              Alert.alert("Успех", "Рецепт удалён", [
+                {
+                  text: "OK",
+                  onPress: () => navigation.goBack(),
+                },
+              ]);
+            } catch (err) {
+              const errorText =
+                err.response?.data?.error || "Не удалось удалить рецепт";
+              Alert.alert("Ошибка", errorText);
+            } finally {
+              setDeleteLoading(false);
             }
           },
         },
@@ -142,6 +174,12 @@ export default function RecipeDetailsScreen({ route, navigation }) {
         </View>
 
         <Text style={styles.title}>{recipe.name}</Text>
+
+        <View style={styles.categoryBadge}>
+          <Text style={styles.categoryBadgeText}>
+            {recipe.category || "Другое"}
+          </Text>
+        </View>
 
         <View style={styles.metaRow}>
           <View style={styles.metaChip}>
@@ -255,7 +293,10 @@ export default function RecipeDetailsScreen({ route, navigation }) {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={[styles.secondaryActionButton, actionLoading && styles.buttonDisabled]}
+            style={[
+              styles.secondaryActionButton,
+              actionLoading && styles.buttonDisabled,
+            ]}
             activeOpacity={0.9}
             onPress={handleOpenShoppingList}
             disabled={actionLoading}
@@ -265,6 +306,17 @@ export default function RecipeDetailsScreen({ route, navigation }) {
             </Text>
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity
+          style={[styles.deleteButton, deleteLoading && styles.buttonDisabled]}
+          activeOpacity={0.9}
+          onPress={handleDeleteRecipe}
+          disabled={deleteLoading}
+        >
+          <Text style={styles.deleteButtonText}>
+            {deleteLoading ? "Удаляем..." : "Удалить рецепт"}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -343,7 +395,20 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#333",
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: 10,
+  },
+  categoryBadge: {
+    alignSelf: "center",
+    backgroundColor: "#FFF3E4",
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  categoryBadgeText: {
+    color: "#D08A2E",
+    fontSize: 13,
+    fontWeight: "700",
   },
   metaRow: {
     flexDirection: "row",
@@ -392,21 +457,21 @@ const styles = StyleSheet.create({
   statusDescription: {
     fontSize: 14,
     color: "#555",
-    lineHeight: 20,
+    lineHeight: 21,
   },
   block: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 16,
-    marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#E7E7E7",
+    borderColor: "#E8E8E8",
+    marginBottom: 14,
   },
   blockTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#F6A347",
-    marginBottom: 10,
+    color: "#333",
+    marginBottom: 12,
   },
   descriptionText: {
     fontSize: 15,
@@ -414,41 +479,41 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   ingredientCard: {
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 16,
+    padding: 14,
     marginBottom: 10,
     borderWidth: 1,
   },
   ingredientCardEnough: {
-    backgroundColor: "#ECFBF7",
-    borderColor: "#CBECE3",
+    backgroundColor: "#F1FBF8",
+    borderColor: "#CBEDE5",
   },
   ingredientCardMissing: {
-    backgroundColor: "#F4F4F4",
-    borderColor: "#DEDEDE",
+    backgroundColor: "#F8F8F8",
+    borderColor: "#E4E4E4",
   },
   ingredientName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#333",
-    marginBottom: 6,
+    color: "#222",
+    marginBottom: 8,
   },
   ingredientText: {
     fontSize: 14,
-    color: "#444",
+    color: "#555",
     marginBottom: 4,
   },
   ingredientOkText: {
+    marginTop: 6,
     fontSize: 14,
-    color: "#18877E",
-    fontWeight: "600",
-    marginTop: 2,
+    fontWeight: "700",
+    color: "#1E8F80",
   },
   ingredientMissingText: {
+    marginTop: 6,
     fontSize: 14,
-    color: "#888888",
-    fontWeight: "600",
-    marginTop: 2,
+    fontWeight: "700",
+    color: "#777",
   },
   stepRow: {
     flexDirection: "row",
@@ -460,9 +525,9 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     backgroundColor: "#28B3AC",
-    justifyContent: "center",
     alignItems: "center",
-    marginRight: 10,
+    justifyContent: "center",
+    marginRight: 12,
     marginTop: 2,
   },
   stepNumberText: {
@@ -477,47 +542,54 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   actionButton: {
-    marginTop: 8,
     backgroundColor: "#28B3AC",
     borderRadius: 18,
     paddingVertical: 16,
     alignItems: "center",
-    elevation: 4,
+    marginTop: 6,
+    marginBottom: 10,
   },
   actionButtonText: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "700",
-    textAlign: "center",
-    paddingHorizontal: 16,
   },
   secondaryActionButton: {
-    marginTop: 8,
     backgroundColor: "#F6A347",
     borderRadius: 18,
     paddingVertical: 16,
     alignItems: "center",
-    elevation: 4,
+    marginTop: 6,
+    marginBottom: 10,
   },
   secondaryActionButtonText: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "700",
-    textAlign: "center",
-    paddingHorizontal: 16,
+  },
+  deleteButton: {
+    backgroundColor: "#EFEFEF",
+    borderRadius: 18,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  deleteButtonText: {
+    color: "#666",
+    fontSize: 15,
+    fontWeight: "700",
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   backButton: {
-    backgroundColor: "#F6A347",
+    backgroundColor: "#28B3AC",
     borderRadius: 14,
     paddingVertical: 12,
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
   },
   backButtonText: {
     color: "#FFFFFF",
     fontWeight: "700",
-    fontSize: 16,
+    fontSize: 15,
   },
 });

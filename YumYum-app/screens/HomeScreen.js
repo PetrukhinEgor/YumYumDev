@@ -1,6 +1,6 @@
 // YumYum-app/screens/HomeScreen.js
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,11 +9,24 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from "react-native";
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { API_URL } from "../config/api";
+
+const CATEGORY_OPTIONS = [
+  "Все",
+  "Завтрак",
+  "Обед",
+  "Ужин",
+  "Перекус",
+  "Первое",
+  "Второе",
+  "Мангальные блюда",
+  "Другое",
+];
 
 export default function HomeScreen({ navigation, route }) {
   const [recipes, setRecipes] = useState([]);
@@ -21,7 +34,9 @@ export default function HomeScreen({ navigation, route }) {
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRecipeIds, setSelectedRecipeIds] = useState([]);
+  const [activeCategory, setActiveCategory] = useState("Все");
 
+  const categoriesScrollRef = useRef(null);
   const clearSelectionKey = route?.params?.clearSelectionKey;
 
   const loadRecipes = useCallback(async () => {
@@ -53,6 +68,24 @@ export default function HomeScreen({ navigation, route }) {
       clearSelectionKey: undefined,
     });
   }, [clearSelectionKey, navigation]);
+
+  const orderedCategories = useMemo(() => {
+    if (activeCategory === "Все") {
+      return CATEGORY_OPTIONS;
+    }
+
+    const rest = CATEGORY_OPTIONS.filter((item) => item !== activeCategory);
+    return [activeCategory, ...rest];
+  }, [activeCategory]);
+
+  const filteredRecipes = useMemo(() => {
+    if (activeCategory === "Все") return recipes;
+
+    return recipes.filter((recipe) => {
+      const recipeCategory = recipe.category || "Другое";
+      return recipeCategory === activeCategory;
+    });
+  }, [recipes, activeCategory]);
 
   const selectedRecipeNames = useMemo(() => {
     return recipes
@@ -94,6 +127,21 @@ export default function HomeScreen({ navigation, route }) {
     });
   };
 
+  const openCreateRecipe = () => {
+    navigation.navigate("CreateRecipe");
+  };
+
+  const handleSelectCategory = (category) => {
+    setActiveCategory(category);
+
+    requestAnimationFrame(() => {
+      categoriesScrollRef.current?.scrollTo({
+        x: 0,
+        animated: true,
+      });
+    });
+  };
+
   const renderRecipeCard = ({ item }) => {
     const canCook = !!item.can_cook;
     const isSelected = selectedRecipeIds.includes(item.id);
@@ -128,6 +176,10 @@ export default function HomeScreen({ navigation, route }) {
           <Text style={styles.imageEmoji}>{getRecipeEmoji(item.name)}</Text>
         </View>
 
+        <View style={styles.categoryBadge}>
+          <Text style={styles.categoryBadgeText}>{item.category || "Другое"}</Text>
+        </View>
+
         <Text style={styles.cardTitle} numberOfLines={2}>
           {item.name}
         </Text>
@@ -155,6 +207,7 @@ export default function HomeScreen({ navigation, route }) {
                 ? styles.statusBadgeTextCookable
                 : styles.statusBadgeTextMissing,
             ]}
+            numberOfLines={2}
           >
             {canCook ? "Можно готовить" : "Не хватает ингредиентов"}
           </Text>
@@ -162,6 +215,81 @@ export default function HomeScreen({ navigation, route }) {
       </TouchableOpacity>
     );
   };
+
+  const renderHeader = () => (
+    <View style={styles.listHeader}>
+      <Text style={styles.sectionTitle}>Рецепты</Text>
+
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={openCreateRecipe}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.secondaryButtonText} numberOfLines={1}>
+            + Рецепт
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.selectButton}
+          onPress={toggleSelectionMode}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.selectButtonText} numberOfLines={1}>
+            {selectionMode ? "Отмена" : "Выбрать"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        ref={categoriesScrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoriesRow}
+      >
+        {orderedCategories.map((category) => {
+          const isActive = activeCategory === category;
+
+          return (
+            <TouchableOpacity
+              key={category}
+              style={[
+                styles.categoryChip,
+                isActive && styles.categoryChipActive,
+              ]}
+              onPress={() => handleSelectCategory(category)}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.categoryChipText,
+                  isActive && styles.categoryChipTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                {category}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {selectionMode ? (
+        <Text style={styles.selectionHint}>
+          Выбери несколько рецептов, чтобы собрать общий список покупок
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const renderEmpty = () => (
+    <Text style={styles.emptyText}>
+      {recipes.length === 0
+        ? "Пока нет рецептов. Создай первый рецепт или добавь их в базу."
+        : "В этой категории пока нет рецептов."}
+    </Text>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
@@ -171,41 +299,22 @@ export default function HomeScreen({ navigation, route }) {
         </View>
 
         <View style={styles.content}>
-          <View style={styles.topRow}>
-            <Text style={styles.sectionTitle}>Рекомендуем</Text>
-
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={toggleSelectionMode}
-            >
-              <Text style={styles.selectButtonText}>
-                {selectionMode ? "Отмена" : "Выбрать"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {selectionMode ? (
-            <Text style={styles.selectionHint}>
-              Выбери несколько рецептов, чтобы собрать общий список покупок
-            </Text>
-          ) : null}
-
           {loading ? (
             <View style={styles.center}>
               <ActivityIndicator size="large" color="#28B3AC" />
               <Text style={styles.loadingText}>Загружаем рецепты...</Text>
             </View>
-          ) : recipes.length === 0 ? (
-            <Text style={styles.emptyText}>
-              Пока нет рецептов. Добавь их в базу и они появятся здесь.
-            </Text>
           ) : (
             <FlatList
-              data={recipes}
+              data={filteredRecipes}
               keyExtractor={(item) => item.id.toString()}
               renderItem={renderRecipeCard}
               numColumns={2}
-              columnWrapperStyle={styles.row}
+              columnWrapperStyle={
+                filteredRecipes.length > 0 ? styles.row : undefined
+              }
+              ListHeaderComponent={renderHeader}
+              ListEmptyComponent={renderEmpty}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
             />
@@ -215,6 +324,7 @@ export default function HomeScreen({ navigation, route }) {
             <TouchableOpacity
               style={styles.shoppingButton}
               onPress={openShoppingListForSelected}
+              activeOpacity={0.9}
             >
               <Text style={styles.shoppingButtonText}>
                 Список покупок для выбранных блюд ({selectedRecipeIds.length})
@@ -267,53 +377,91 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 18,
-    paddingTop: 24,
+    paddingTop: 18,
   },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  listHeader: {
+    paddingBottom: 14,
   },
   sectionTitle: {
     fontSize: 30,
     fontWeight: "700",
     color: "#F6A347",
-    marginBottom: 18,
+    lineHeight: 36,
+    marginBottom: 12,
+  },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 14,
+  },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 46,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E4E4E4",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  secondaryButtonText: {
+    color: "#28B3AC",
+    fontWeight: "700",
+    fontSize: 14,
+    textAlign: "center",
   },
   selectButton: {
+    flex: 1,
+    minHeight: 46,
     backgroundColor: "#28B3AC",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
   },
   selectButtonText: {
     color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 14,
+    textAlign: "center",
+  },
+  categoriesRow: {
+    paddingBottom: 4,
+    paddingRight: 18,
+    alignItems: "center",
+  },
+  categoryChip: {
+    alignSelf: "flex-start",
+    minHeight: 40,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  categoryChipActive: {
+    backgroundColor: "#28B3AC",
+    borderColor: "#28B3AC",
+  },
+  categoryChipText: {
+    color: "#555",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  categoryChipTextActive: {
+    color: "#FFFFFF",
   },
   selectionHint: {
     fontSize: 14,
     color: "#666",
-    marginBottom: 12,
+    marginTop: 10,
     lineHeight: 20,
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#555",
-  },
-  emptyText: {
-    fontSize: 16,
-    color: "#666",
-    lineHeight: 22,
-    textAlign: "center",
-    marginTop: 20,
   },
   listContent: {
     paddingBottom: 140,
@@ -324,20 +472,22 @@ const styles = StyleSheet.create({
   },
   card: {
     width: "48%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 22,
-    padding: 14,
+    minHeight: 300,
+    borderRadius: 26,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 16,
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E9E9E9",
     position: "relative",
   },
   cardCookable: {
-    backgroundColor: "#E8FAF7",
-    borderColor: "#BDEAE2",
+    backgroundColor: "#DDF6F0",
+    borderColor: "#9EDFD0",
   },
   cardMissing: {
-    backgroundColor: "#FAFAFA",
-    borderColor: "#ECECEC",
+    backgroundColor: "#F4F4F4",
+    borderColor: "#DFDFDF",
   },
   cardSelected: {
     borderColor: "#F6A347",
@@ -347,11 +497,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 10,
     right: 10,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 2,
-    borderColor: "#CFCFCF",
+    borderColor: "#28B3AC",
     backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
@@ -367,25 +517,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   imageCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     backgroundColor: "#FFF3E4",
     justifyContent: "center",
     alignItems: "center",
-    alignSelf: "center",
-    marginTop: 8,
+    marginTop: 4,
     marginBottom: 12,
   },
   imageEmoji: {
-    fontSize: 28,
+    fontSize: 30,
+  },
+  categoryBadge: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#EAEAEA",
+  },
+  categoryBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#666",
+    textAlign: "center",
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     color: "#222",
     textAlign: "center",
-    minHeight: 42,
+    minHeight: 40,
   },
   cardMeta: {
     fontSize: 13,
@@ -398,6 +562,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 10,
+    minHeight: 44,
+    justifyContent: "center",
   },
   statusBadgeCookable: {
     backgroundColor: "#D8F4EE",
@@ -415,6 +581,23 @@ const styles = StyleSheet.create({
   },
   statusBadgeTextMissing: {
     color: "#777",
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#555",
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#666",
+    lineHeight: 22,
+    textAlign: "center",
+    marginTop: 20,
   },
   shoppingButton: {
     position: "absolute",
@@ -435,5 +618,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 15,
+    textAlign: "center",
+    paddingHorizontal: 8,
   },
 });

@@ -7,7 +7,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import HomeStack from "./HomeStack";
 import ScanStack from "./ScanStack";
 import ShoppingStack from "./ShoppingStack";
-import ProductsScreen from "../screens/ProductsScreen";
+import ProductsStack from "./ProductsStack";
 
 const Tab = createBottomTabNavigator();
 
@@ -17,30 +17,23 @@ export default function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-
         sceneStyle: {
           backgroundColor: "#F4F4F4",
         },
-
         tabBarStyle: {
-          height: 100,
           backgroundColor: "#28B3AC",
           borderTopWidth: 0,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
+          borderRadius: 24,
           elevation: 12,
           shadowColor: "#000",
-          shadowOpacity: 0.14,
+          shadowOpacity: 0.18,
           shadowRadius: 10,
-          shadowOffset: { width: 0, height: -2 },
-          paddingTop: 10,
-          paddingBottom: 10,
+          shadowOffset: { width: 0, height: 4 },
+          overflow: "hidden",
         },
-
         tabBarItemStyle: {
-          paddingVertical: 4,
+          paddingVertical: 8,
         },
-
         tabBarBackground: () => (
           <View style={styles.tabBarBackground}>
             <View style={styles.tabBarGlow} />
@@ -63,17 +56,17 @@ export default function MainTabs() {
         component={ScanStack}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabButton label="👁️" focused={focused} center />
+            <TabButton label="📸" focused={focused} center />
           ),
         }}
       />
 
       <Tab.Screen
         name="ProductsTab"
-        component={ProductsScreen}
+        component={ProductsStack}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabButton label="📋" focused={focused} />
+            <TabButton label="📝" focused={focused} />
           ),
         }}
       />
@@ -96,9 +89,8 @@ function TabButton({ label, focused, center = false }) {
     <View
       style={[
         styles.iconWrapper,
-        focused && styles.iconWrapperFocused,
         center && styles.centerIconWrapper,
-        center && focused && styles.centerIconWrapperFocused,
+        focused && styles.iconWrapperFocused,
       ]}
     >
       <Text
@@ -118,25 +110,33 @@ const styles = StyleSheet.create({
   tabBarBackground: {
     flex: 1,
     backgroundColor: "#28B3AC",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#28B3AC",
   },
 
   tabBarGlow: {
     position: "absolute",
     top: 0,
-    left: 24,
-    right: 24,
+    left: 18,
+    right: 18,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
   iconWrapper: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+
+  centerIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "transparent",
   },
 
@@ -144,26 +144,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.14)",
   },
 
-  centerIconWrapper: {
-    backgroundColor: "rgba(255,255,255,0.10)",
-  },
-
-  centerIconWrapperFocused: {
-    backgroundColor: "#F6A347",
-  },
-
   iconText: {
     fontSize: 22,
-    color: "rgba(255,255,255,0.78)",
-    fontWeight: "700",
   },
 
   iconTextFocused: {
-    color: "#FFFFFF",
+    fontSize: 24,
   },
 
   centerIconText: {
-    fontSize: 24,
-    lineHeight: 26,
+    fontSize: 22,
   },
 });

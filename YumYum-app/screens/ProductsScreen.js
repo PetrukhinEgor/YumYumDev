@@ -16,9 +16,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API_URL } from "../config/api";
 
-// const API_URL = "http://192.168.1.138:5000";
-
-export default function ProductsScreen() {
+export default function ProductsScreen({ navigation }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -27,7 +25,7 @@ export default function ProductsScreen() {
     try {
       setLoading(true);
       const res = await axios.get(`${API_URL}/api/products`);
-      setProducts(res.data);
+      setProducts(res.data || []);
     } catch (err) {
       console.log("Ошибка загрузки продуктов:", err.message);
       Alert.alert("Ошибка", "Не удалось загрузить список продуктов");
@@ -43,13 +41,22 @@ export default function ProductsScreen() {
   );
 
   const handleDelete = async (id) => {
-    try {
-      await axios.delete(`${API_URL}/api/products/${id}`);
-      setProducts((prev) => prev.filter((item) => item.id !== id));
-    } catch (err) {
-      console.log("Ошибка удаления:", err.message);
-      Alert.alert("Ошибка", "Не удалось удалить продукт");
-    }
+    Alert.alert("Удалить продукт?", "Продукт будет удалён из списка.", [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: "Удалить",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await axios.delete(`${API_URL}/api/products/${id}`);
+            setProducts((prev) => prev.filter((item) => item.id !== id));
+          } catch (err) {
+            console.log("Ошибка удаления:", err.message);
+            Alert.alert("Ошибка", "Не удалось удалить продукт");
+          }
+        },
+      },
+    ]);
   };
 
   const filteredProducts = useMemo(() => {
@@ -63,6 +70,10 @@ export default function ProductsScreen() {
       return name.includes(q) || ingredient.includes(q);
     });
   }, [products, search]);
+
+  const openAddProduct = () => {
+    navigation.navigate("AddProduct");
+  };
 
   const renderProduct = ({ item }) => {
     return (
@@ -112,7 +123,13 @@ export default function ProductsScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <View style={styles.container}>
-        <Text style={styles.title}>Мои продукты</Text>
+        <View style={styles.topRow}>
+          <Text style={styles.title}>Мои продукты</Text>
+
+          <TouchableOpacity style={styles.addButton} onPress={openAddProduct}>
+            <Text style={styles.addButtonText}>+ Добавить</Text>
+          </TouchableOpacity>
+        </View>
 
         <TextInput
           style={styles.searchInput}
@@ -153,6 +170,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
   },
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#28B3AC",
+    marginBottom: 12,
+  },
+  addButton: {
+    backgroundColor: "#F6A347",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginBottom: 10,
+  },
+  addButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  searchInput: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    marginBottom: 14,
+  },
   listContent: {
     paddingBottom: 120,
   },
@@ -160,73 +211,60 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: "#444",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#28B3AC",
-    marginBottom: 16,
-  },
-  searchInput: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    color: "#555",
   },
   emptyText: {
     fontSize: 16,
     color: "#666",
-    marginTop: 8,
+    lineHeight: 22,
+    textAlign: "center",
+    marginTop: 20,
   },
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#E7E7E7",
+    borderColor: "#E8E8E8",
   },
   name: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
-    marginBottom: 8,
     color: "#222",
+    marginBottom: 8,
   },
   info: {
     fontSize: 14,
+    color: "#555",
     marginBottom: 6,
-    color: "#444",
   },
   goodBadge: {
+    marginTop: 8,
+    color: "#1E8F80",
+    fontWeight: "700",
     fontSize: 14,
-    color: "#146C2E",
-    marginBottom: 10,
   },
   warnBadge: {
+    marginTop: 8,
+    color: "#D08A2E",
+    fontWeight: "700",
     fontSize: 14,
-    color: "#B26A00",
-    marginBottom: 10,
   },
   deleteButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#F6A347",
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginTop: 4,
+    marginTop: 14,
+    backgroundColor: "#EFEFEF",
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
   },
   deleteButtonText: {
-    color: "#FFFFFF",
+    fontSize: 14,
     fontWeight: "700",
+    color: "#555",
   },
 });
