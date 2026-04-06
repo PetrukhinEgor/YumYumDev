@@ -1,5 +1,4 @@
 // YumYum-app/screens/ProductsScreen.js
-
 import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
@@ -75,6 +74,12 @@ export default function ProductsScreen({ navigation }) {
     navigation.navigate("AddProduct");
   };
 
+  const openEditProduct = (product) => {
+    navigation.navigate("EditProduct", {
+      product,
+    });
+  };
+
   const renderProduct = ({ item }) => {
     return (
       <View style={styles.card}>
@@ -99,12 +104,21 @@ export default function ProductsScreen({ navigation }) {
           </Text>
         )}
 
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => handleDelete(item.id)}
-        >
-          <Text style={styles.deleteButtonText}>Удалить</Text>
-        </TouchableOpacity>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => openEditProduct(item)}
+          >
+            <Text style={styles.editButtonText}>Редактировать</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDelete(item.id)}
+          >
+            <Text style={styles.deleteButtonText}>Удалить</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -255,8 +269,25 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 14,
   },
-  deleteButton: {
+  actionsRow: {
+    flexDirection: "row",
+    gap: 10,
     marginTop: 14,
+  },
+  editButton: {
+    flex: 1,
+    backgroundColor: "#28B3AC",
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  deleteButton: {
+    flex: 1,
     backgroundColor: "#EFEFEF",
     borderRadius: 14,
     paddingVertical: 12,

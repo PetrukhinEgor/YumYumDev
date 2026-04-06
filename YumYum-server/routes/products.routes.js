@@ -1,5 +1,3 @@
-// YumYum-server/routes/products.routes.js
-
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
@@ -14,6 +12,73 @@ function formatAmount(quantity, unit) {
 
   const value = Number.isInteger(numeric) ? numeric : Number(numeric.toFixed(2));
   return `${value} ${unit}`;
+}
+
+async function resolveIngredientData(productName) {
+  const ingredientName = matchIngredient(productName);
+
+  if (!ingredientName) {
+    return {
+      ingredientName: null,
+      ingredientId: null,
+      baseUnit: null,
+    };
+  }
+
+  const ingredientResult = await pool.query(
+    `
+    SELECT id, name, base_unit
+    FROM ingredients
+    WHERE name = $1
+    LIMIT 1
+    `,
+    [ingredientName]
+  );
+
+  if (ingredientResult.rows.length === 0) {
+    return {
+      ingredientName,
+      ingredientId: null,
+      baseUnit: null,
+    };
+  }
+
+  return {
+    ingredientName: ingredientResult.rows[0].name,
+    ingredientId: ingredientResult.rows[0].id,
+    baseUnit: ingredientResult.rows[0].base_unit,
+  };
+}
+
+function buildNormalizedData(quantity, unit, baseUnit) {
+  if (quantity == null || !unit || !baseUnit) {
+    return {
+      normalizedQuantity: null,
+      normalizedUnit: null,
+    };
+  }
+
+  const parsedQuantity = Number(quantity);
+  const normalizedInputUnit = String(unit).trim().toLowerCase();
+
+  if (Number.isNaN(parsedQuantity) || parsedQuantity <= 0) {
+    return {
+      normalizedQuantity: null,
+      normalizedUnit: null,
+    };
+  }
+
+  if (normalizedInputUnit === baseUnit) {
+    return {
+      normalizedQuantity: parsedQuantity,
+      normalizedUnit: normalizedInputUnit,
+    };
+  }
+
+  return {
+    normalizedQuantity: null,
+    normalizedUnit: null,
+  };
 }
 
 router.get("/", async (req, res) => {
@@ -84,34 +149,14 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    const ingredientName = matchIngredient(trimmedName);
+    const { ingredientName, ingredientId, baseUnit } =
+      await resolveIngredientData(trimmedName);
 
-    let ingredientId = null;
-    let baseUnit = null;
-
-    if (ingredientName) {
-      const ingredientResult = await pool.query(
-        `
-        SELECT id, base_unit
-        FROM ingredients
-        WHERE name = $1
-        `,
-        [ingredientName]
-      );
-
-      if (ingredientResult.rows.length > 0) {
-        ingredientId = ingredientResult.rows[0].id;
-        baseUnit = ingredientResult.rows[0].base_unit;
-      }
-    }
-
-    let normalizedQuantity = null;
-    let normalizedUnit = null;
-
-    if (baseUnit && baseUnit === normalizedInputUnit) {
-      normalizedQuantity = parsedQuantity;
-      normalizedUnit = normalizedInputUnit;
-    }
+    const { normalizedQuantity, normalizedUnit } = buildNormalizedData(
+      parsedQuantity,
+      normalizedInputUnit,
+      baseUnit
+    );
 
     const insertResult = await pool.query(
       `
@@ -175,79 +220,97 @@ router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const { quantity, unit, name } = req.body;
 
-  const updates = [];
-  const values = [];
-  let valueIndex = 1;
-
-  if (name !== undefined) {
-    const trimmedName = String(name).trim();
-
-    if (!trimmedName) {
-      return res.status(400).json({
-        error: "Название не может быть пустым",
-      });
-    }
-
-    updates.push(`name = $${valueIndex++}`);
-    values.push(trimmedName);
-  }
-
-  if (quantity !== undefined) {
-    const parsedQuantity = Number(quantity);
-
-    if (!parsedQuantity || parsedQuantity <= 0) {
-      return res.status(400).json({
-        error: "Количество должно быть больше нуля",
-      });
-    }
-
-    updates.push(`quantity = $${valueIndex++}`);
-    values.push(parsedQuantity);
-  }
-
-  if (unit !== undefined) {
-    const normalizedUnit = String(unit).trim().toLowerCase();
-
-    if (!["g", "ml", "pcs"].includes(normalizedUnit)) {
-      return res.status(400).json({
-        error: "Допустимые единицы: g, ml, pcs",
-      });
-    }
-
-    updates.push(`unit = $${valueIndex++}`);
-    values.push(normalizedUnit);
-  }
-
-  if (updates.length === 0) {
-    return res.status(400).json({
-      error: "Нет данных для обновления",
-    });
-  }
-
-  values.push(id);
-  values.push(userId);
-
   try {
-    const result = await pool.query(
+    const existingResult = await pool.query(
       `
-      UPDATE products
-      SET ${updates.join(", ")}
-      WHERE id = $${valueIndex++}
-        AND user_id = $${valueIndex}
-      RETURNING *
+      SELECT *
+      FROM products
+      WHERE id = $1
+        AND user_id = $2
+      LIMIT 1
       `,
-      values
+      [id, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (existingResult.rows.length === 0) {
       return res.status(404).json({
         error: "Продукт не найден",
       });
     }
 
+    const existingProduct = existingResult.rows[0];
+
+    const nextName =
+      name !== undefined ? String(name).trim() : String(existingProduct.name || "").trim();
+
+    const nextQuantity =
+      quantity !== undefined ? Number(quantity) : Number(existingProduct.quantity);
+
+    const nextUnit =
+      unit !== undefined
+        ? String(unit).trim().toLowerCase()
+        : String(existingProduct.unit || "").trim().toLowerCase();
+
+    if (!nextName) {
+      return res.status(400).json({
+        error: "Название не может быть пустым",
+      });
+    }
+
+    if (!nextQuantity || nextQuantity <= 0) {
+      return res.status(400).json({
+        error: "Количество должно быть больше нуля",
+      });
+    }
+
+    if (!["g", "ml", "pcs"].includes(nextUnit)) {
+      return res.status(400).json({
+        error: "Допустимые единицы: g, ml, pcs",
+      });
+    }
+
+    const { ingredientName, ingredientId, baseUnit } =
+      await resolveIngredientData(nextName);
+
+    const { normalizedQuantity, normalizedUnit } = buildNormalizedData(
+      nextQuantity,
+      nextUnit,
+      baseUnit
+    );
+
+    const result = await pool.query(
+      `
+      UPDATE products
+      SET
+        name = $1,
+        quantity = $2,
+        unit = $3,
+        ingredient_id = $4,
+        normalized_quantity = $5,
+        normalized_unit = $6
+      WHERE id = $7
+        AND user_id = $8
+      RETURNING *
+      `,
+      [
+        nextName,
+        nextQuantity,
+        nextUnit,
+        ingredientId,
+        normalizedQuantity,
+        normalizedUnit,
+        id,
+        userId,
+      ]
+    );
+
     res.json({
       message: "Продукт обновлён",
-      product: result.rows[0],
+      product: {
+        ...result.rows[0],
+        ingredient_name: ingredientName || null,
+        display_amount: formatAmount(result.rows[0].quantity, result.rows[0].unit),
+      },
     });
   } catch (err) {
     console.error("Ошибка обновления продукта:", err);
