@@ -12,6 +12,9 @@ function isNonFoodProduct(productName) {
   const name = cleanName(productName);
 
   const nonFoodKeywords = [
+    "парад скидок",
+    "скидка",
+    "акция",
     "пакет",
     "майка",
     "фасовоч",
@@ -120,6 +123,21 @@ function isLikelyFoodProduct(productName) {
     "кекс",
     "печенье",
     "чипс",
+    "начос",
+    "nachos",
+    "смесь",
+    "приправа",
+    "маринад",
+    "паштет",
+    "мандарин",
+    "вода",
+    "питьевая",
+    "йогурт",
+    "груш",
+    "банан",
+    "профитрол",
+    "морожен",
+
   ];
 
   return containsAny(name, foodKeywords);
@@ -137,7 +155,13 @@ function matchIngredient(productName) {
   */
 
   // ❗ чипсы раньше соли
-  if (name.includes("чипс")) return "Чипсы";
+  if (
+  name.includes("чипс") ||
+  name.includes("начос") ||
+  name.includes("nachos")
+  ) {
+    return "Чипсы";
+  }
 
   // ❗ фарш раньше мяса
   if (name.includes("фарш")) return "Фарш";
@@ -206,6 +230,14 @@ function matchIngredient(productName) {
   if (name.includes("лук")) return "Лук";
   if (name.includes("чеснок")) return "Чеснок";
   if (name.includes("свекл")) return "Свекла";
+  if (name.includes("йогурт")) return "Йогурт";
+  if (name.includes("паштет")) return "Паштет";
+  if (name.includes("мандарин")) return "Мандарин";
+  if (name.includes("вода") || name.includes("питьевая")) return "Вода";
+  if (name.includes("груш")) return "Груша";
+  if (name.includes("банан")) return "Банан";
+  if (name.includes("профитрол")) return "Профитроли";
+  if (name.includes("морожен")) return "Мороженое";
   if (name.includes("огур")) return "Огурец";
 
   if (
@@ -265,6 +297,8 @@ function matchIngredient(productName) {
 
   if (name.includes("сок")) return "Сок";
   if (name.includes("нектар")) return "Нектар";
+
+  if (name.includes("приправ") || name.includes("смесь")) return "Приправа";
 
   return null;
 }

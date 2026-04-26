@@ -29,7 +29,7 @@ async function resolveIngredientData(productName) {
     `
     SELECT id, name, base_unit
     FROM ingredients
-    WHERE name = $1
+    WHERE LOWER(name) = LOWER($1)
     LIMIT 1
     `,
     [ingredientName]

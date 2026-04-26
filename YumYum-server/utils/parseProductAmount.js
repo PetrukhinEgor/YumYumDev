@@ -147,7 +147,7 @@ function parseProductAmount(productName, baseUnit, ingredientName = null) {
     if (pcsResult) return pcsResult;
 
     const packLikeResult = parsePackLikePieces(name);
-    if (packLikeResult) return packLikePieces;
+    if (packLikeResult) return packLikeResult;
 
     return createResult(1, "pcs");
   }

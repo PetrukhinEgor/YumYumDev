@@ -24,12 +24,21 @@ app.use("/api/products", productRoutes);
 app.use("/api/recipes", recipeRoutes);
 app.use("/api/shopping-list", shoppingRoutes);
 
-initDb();
-
 app.get("/", (req, res) => {
   res.send("YumYum API is running");
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
+async function startServer() {
+  try {
+    await initDb();
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Server startup failed:", error);
+    process.exit(1);
+  }
+}
+
+startServer();

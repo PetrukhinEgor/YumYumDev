@@ -1,9 +1,8 @@
-// YumYum-app/screens/ScanReceiptScreen.js
-
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 
 export default function ScanReceiptScreen({ navigation }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -14,6 +13,12 @@ export default function ScanReceiptScreen({ navigation }) {
       requestPermission();
     }
   }, [permission, requestPermission]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setScanned(false);
+    }, [])
+  );
 
   if (!permission) {
     return (
@@ -39,11 +44,11 @@ export default function ScanReceiptScreen({ navigation }) {
     if (scanned) return;
 
     setScanned(true);
-    navigation.replace("ReceiptResult", { qrData: data });
 
-    setTimeout(() => {
-      setScanned(false);
-    }, 2000);
+    navigation.navigate("ReceiptResult", {
+      qrData: data,
+      scanId: Date.now(),
+    });
   };
 
   return (
@@ -59,6 +64,7 @@ export default function ScanReceiptScreen({ navigation }) {
         />
 
         <View style={styles.overlay}>
+          <Text style={styles.overlayTitle}>Сканирование чека</Text>
           <Text style={styles.overlayText}>Наведите камеру на QR-код чека</Text>
         </View>
       </View>
@@ -70,6 +76,10 @@ const styles = StyleSheet.create({
   cameraSafeArea: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F4F4F4",
   },
   container: {
     flex: 1,
@@ -92,16 +102,23 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     bottom: 110,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    borderRadius: 16,
-    paddingVertical: 14,
+    backgroundColor: "rgba(0,0,0,0.50)",
+    borderRadius: 18,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     alignItems: "center",
   },
+  overlayTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 6,
+    textAlign: "center",
+  },
   overlayText: {
     color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "500",
     textAlign: "center",
   },
 });

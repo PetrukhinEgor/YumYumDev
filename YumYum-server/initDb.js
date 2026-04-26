@@ -1,10 +1,4 @@
-// YumYum-server/initDb.js
-const pool = require('./db')
-
-// DROP TABLE IF EXISTS recipe_ingredients CASCADE;
-// DROP TABLE IF EXISTS recipes CASCADE;
-// DROP TABLE IF EXISTS products CASCADE;
-// DROP TABLE IF EXISTS users CASCADE;
+const pool = require("./db");
 
 async function initDb() {
   try {
@@ -30,8 +24,8 @@ async function initDb() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ingredients (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL,
-        base_unit VARCHAR(20) NOT NULL
+        name TEXT UNIQUE NOT NULL,
+        base_unit VARCHAR(20)
       );
     `);
 
@@ -45,7 +39,7 @@ async function initDb() {
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
-        quantity FLOAT DEFAULT 1,
+        quantity DOUBLE PRECISION DEFAULT 1,
         unit VARCHAR(50),
         expires_at DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -63,11 +57,12 @@ async function initDb() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS recipes (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
+        name TEXT NOT NULL,
         description TEXT,
         cooking_time_min INTEGER,
         servings INTEGER,
-        recipe_steps TEXT[]
+        recipe_steps TEXT[],
+        category TEXT DEFAULT 'Другое'
       );
     `);
 
@@ -80,21 +75,24 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS recipe_ingredients (
         id SERIAL PRIMARY KEY,
         recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
-        product_name VARCHAR(255),
-        quantity NUMERIC,
-        unit VARCHAR(50),
-        ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE SET NULL
+        product_name TEXT NOT NULL,
+        quantity NUMERIC NOT NULL,
+        unit TEXT NOT NULL,
+        ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE RESTRICT
       );
     `);
 
     /*
     ========================================
-    МЯГКАЯ МИГРАЦИЯ СУЩЕСТВУЮЩЕЙ БД
-    Чтобы initDb не ломался на уже созданной базе
+    МЯГКИЕ МИГРАЦИИ
     ========================================
     */
 
-    // products
+    await pool.query(`
+      ALTER TABLE ingredients
+      ADD COLUMN IF NOT EXISTS base_unit VARCHAR(20);
+    `);
+
     await pool.query(`
       ALTER TABLE products
       ADD COLUMN IF NOT EXISTS ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE SET NULL;
@@ -110,7 +108,6 @@ async function initDb() {
       ADD COLUMN IF NOT EXISTS normalized_unit VARCHAR(20);
     `);
 
-    // recipes
     await pool.query(`
       ALTER TABLE recipes
       ADD COLUMN IF NOT EXISTS description TEXT;
@@ -131,10 +128,25 @@ async function initDb() {
       ADD COLUMN IF NOT EXISTS recipe_steps TEXT[];
     `);
 
-    // recipe_ingredients
+    await pool.query(`
+      ALTER TABLE recipes
+      ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Другое';
+    `);
+
     await pool.query(`
       ALTER TABLE recipe_ingredients
-      ADD COLUMN IF NOT EXISTS ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE SET NULL;
+      ADD COLUMN IF NOT EXISTS ingredient_id INTEGER REFERENCES ingredients(id) ON DELETE RESTRICT;
+    `);
+
+    /*
+    ========================================
+    ИНДЕКСЫ И ОГРАНИЧЕНИЯ
+    ========================================
+    */
+
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS products_user_id_name_unique
+      ON products (user_id, name);
     `);
 
     console.log("База данных и таблицы готовы");
