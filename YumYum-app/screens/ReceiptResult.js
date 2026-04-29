@@ -13,6 +13,7 @@ import {
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API_URL } from "../config/api";
+import { isDisplayDate, toApiDate, toDisplayDate } from "../utils/dateFormat";
 
 const UNIT_OPTIONS = ["g", "ml", "pcs"];
 
@@ -37,7 +38,12 @@ export default function ReceiptResult({ route, navigation }) {
           { timeout: 10000 }
         );
 
-        setItems(res.data?.items || []);
+        const receiptItems = (res.data?.items || []).map((item) => ({
+          ...item,
+          expiresAt: toDisplayDate(item.expiresAt || item.expires_at),
+        }));
+
+        setItems(receiptItems);
       } catch (err) {
         console.log("SCAN ERROR:", err.message);
         setError("Не удалось подготовить черновик чека");
@@ -61,12 +67,14 @@ export default function ReceiptResult({ route, navigation }) {
     const name = String(item.name || "").trim();
     const quantity = Number(item.quantity);
     const unit = String(item.unit || "").trim().toLowerCase();
+    const expiresAt = String(item.expiresAt || item.expires_at || "").trim();
 
     if (!item.include) return "excluded";
     if (!item.isEdible) return "non_food";
     if (!name) return "needs_review";
     if (!quantity || quantity <= 0) return "needs_review";
     if (!UNIT_OPTIONS.includes(unit)) return "needs_review";
+    if (expiresAt && !isDisplayDate(expiresAt)) return "needs_review";
     return "ready";
   };
 
@@ -100,24 +108,35 @@ export default function ReceiptResult({ route, navigation }) {
       const name = String(item.name || "").trim();
       const quantity = Number(item.quantity);
       const unit = String(item.unit || "").trim().toLowerCase();
+      const expiresAt = String(item.expiresAt || item.expires_at || "").trim();
 
-      return !name || !quantity || quantity <= 0 || !UNIT_OPTIONS.includes(unit);
+      return (
+        !name ||
+        !quantity ||
+        quantity <= 0 ||
+        !UNIT_OPTIONS.includes(unit) ||
+        (expiresAt && !isDisplayDate(expiresAt))
+      );
     });
 
     if (invalidItem) {
       Alert.alert(
         "Проверьте данные",
-        `У товара "${invalidItem.name || invalidItem.originalName || "Без названия"}" нужно заполнить название, количество и единицу`
+        `У товара "${invalidItem.name || invalidItem.originalName || "Без названия"}" нужно проверить название, количество, единицу и срок годности`
       );
       return;
     }
 
     try {
       setSubmitting(true);
+      const payloadItems = items.map((item) => ({
+        ...item,
+        expiresAt: toApiDate(item.expiresAt || item.expires_at) || null,
+      }));
 
       const res = await axios.post(
         `${API_URL}/api/receipts/confirm`,
-        { items },
+        { items: payloadItems },
         { timeout: 10000 }
       );
 
@@ -347,8 +366,19 @@ export default function ReceiptResult({ route, navigation }) {
                 </View>
               </View>
 
+              <Text style={styles.label}>Срок годности</Text>
+              <TextInput
+                style={styles.input}
+                value={String(item.expiresAt || item.expires_at || "")}
+                onChangeText={(value) =>
+                  updateItem(item.draftId, { expiresAt: value })
+                }
+                placeholder="Например: 03-05-2026"
+                placeholderTextColor="#999"
+              />
+
               <Text style={styles.helperText}>
-                Вы можете вручную исправить название, количество, единицу и категорию перед сохранением.
+                Вы можете вручную исправить название, количество, единицу, категорию и срок годности перед сохранением.
               </Text>
             </View>
           );

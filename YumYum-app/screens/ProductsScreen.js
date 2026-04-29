@@ -14,6 +14,40 @@ import axios from "axios";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { API_URL } from "../config/api";
+import { toDisplayDate } from "../utils/dateFormat";
+
+function getExpirationText(product) {
+  if (!product.expires_at) return "Срок годности: не указан";
+
+  const days = product.days_until_expiration;
+  const displayDate = toDisplayDate(product.expires_at);
+
+  if (product.expiration_status === "expired") {
+    return `Срок истек: ${displayDate}`;
+  }
+
+  if (product.expiration_status === "today") {
+    return `Срок истекает сегодня: ${displayDate}`;
+  }
+
+  if (product.expiration_status === "soon") {
+    return `Скоро истекает: ${displayDate} (${days} дн.)`;
+  }
+
+  if (days != null) {
+    return `Годен до: ${displayDate} (${days} дн.)`;
+  }
+
+  return `Годен до: ${displayDate}`;
+}
+
+function getExpirationStyle(product) {
+  if (product.expiration_status === "expired") return styles.expiredBadge;
+  if (product.expiration_status === "today") return styles.expiredBadge;
+  if (product.expiration_status === "soon") return styles.soonBadge;
+
+  return styles.expirationBadge;
+}
 
 export default function ProductsScreen({ navigation }) {
   const [products, setProducts] = useState([]);
@@ -92,6 +126,8 @@ export default function ProductsScreen({ navigation }) {
         <Text style={styles.info}>
           Ингредиент: {item.ingredient_name || "не распознан"}
         </Text>
+
+        <Text style={getExpirationStyle(item)}>{getExpirationText(item)}</Text>
 
         {item.normalized_quantity != null && item.normalized_unit ? (
           <Text style={styles.goodBadge}>
@@ -256,6 +292,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#555",
     marginBottom: 6,
+  },
+  expirationBadge: {
+    marginTop: 4,
+    marginBottom: 4,
+    color: "#39715D",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  soonBadge: {
+    marginTop: 4,
+    marginBottom: 4,
+    color: "#B7791F",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  expiredBadge: {
+    marginTop: 4,
+    marginBottom: 4,
+    color: "#C24141",
+    fontWeight: "700",
+    fontSize: 14,
   },
   goodBadge: {
     marginTop: 8,

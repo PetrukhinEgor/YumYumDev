@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import axios from "axios";
 import { API_URL } from "../config/api";
+import { isDisplayDate, toApiDate, toDisplayDate } from "../utils/dateFormat";
 
 const UNIT_OPTIONS = ["g", "ml", "pcs"];
 
@@ -30,12 +31,17 @@ export default function EditProductScreen({ route, navigation }) {
     () => String(product?.unit || "g").toLowerCase(),
     [product]
   );
+  const initialExpiresAt = useMemo(
+    () => toDisplayDate(product?.expires_at),
+    [product]
+  );
 
   const [name, setName] = useState(initialName);
   const [quantity, setQuantity] = useState(initialQuantity);
   const [unit, setUnit] = useState(
     UNIT_OPTIONS.includes(initialUnit) ? initialUnit : "g"
   );
+  const [expiresAt, setExpiresAt] = useState(initialExpiresAt);
   const [loading, setLoading] = useState(false);
 
   const handleSave = async () => {
@@ -62,6 +68,13 @@ export default function EditProductScreen({ route, navigation }) {
       return;
     }
 
+    if (expiresAt.trim() && !isDisplayDate(expiresAt)) {
+      Alert.alert("Ошибка", "Введите срок годности в формате ДД-ММ-ГГГГ");
+      return;
+    }
+
+    const apiExpiresAt = toApiDate(expiresAt);
+
     try {
       setLoading(true);
 
@@ -69,6 +82,7 @@ export default function EditProductScreen({ route, navigation }) {
         name: trimmedName,
         quantity: parsedQuantity,
         unit,
+        expiresAt: apiExpiresAt || null,
       });
 
       Alert.alert("Успех", "Продукт обновлён", [
@@ -166,6 +180,20 @@ export default function EditProductScreen({ route, navigation }) {
               );
             })}
           </View>
+        </View>
+
+        <View style={styles.block}>
+          <Text style={styles.label}>Срок годности</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Например: 03-05-2026"
+            value={expiresAt}
+            onChangeText={setExpiresAt}
+            placeholderTextColor="#9A9A9A"
+          />
+          <Text style={styles.hintText}>
+            Оставьте пустым, если срок неизвестен. Для новых продуктов backend старается рассчитать его автоматически.
+          </Text>
         </View>
 
         {/* <View style={styles.infoCard}>
@@ -275,6 +303,13 @@ const styles = StyleSheet.create({
     color: "#222",
     borderWidth: 1,
     borderColor: "#E5E5E5",
+  },
+  hintText: {
+    marginTop: -4,
+    marginBottom: 4,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#777",
   },
   unitsRow: {
     flexDirection: "row",

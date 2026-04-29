@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import axios from "axios";
 import { API_URL } from "../config/api";
+import { isDisplayDate, toApiDate } from "../utils/dateFormat";
 
 const UNIT_OPTIONS = ["g", "ml", "pcs"];
 
@@ -20,6 +21,7 @@ export default function AddProductScreen({ navigation }) {
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState("g");
+  const [expiresAt, setExpiresAt] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSave = async () => {
@@ -35,6 +37,13 @@ export default function AddProductScreen({ navigation }) {
       return;
     }
 
+    if (expiresAt.trim() && !isDisplayDate(expiresAt)) {
+      Alert.alert("Ошибка", "Введите срок годности в формате ДД-ММ-ГГГГ");
+      return;
+    }
+
+    const apiExpiresAt = toApiDate(expiresAt);
+
     try {
       setLoading(true);
 
@@ -42,6 +51,7 @@ export default function AddProductScreen({ navigation }) {
         name: trimmedName,
         quantity: Number(quantity),
         unit,
+        expiresAt: apiExpiresAt || undefined,
       });
 
       Alert.alert("Успех", "Продукт добавлен вручную", [
@@ -123,6 +133,20 @@ export default function AddProductScreen({ navigation }) {
           </View>
         </View>
 
+        <View style={styles.block}>
+          <Text style={styles.label}>Срок годности</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Например: 03-05-2026"
+            value={expiresAt}
+            onChangeText={setExpiresAt}
+            placeholderTextColor="#9A9A9A"
+          />
+          <Text style={styles.hintText}>
+            Можно оставить пустым: приложение подставит примерный срок по категории продукта.
+          </Text>
+        </View>
+
         <TouchableOpacity
           style={[styles.saveButton, loading && styles.saveButtonDisabled]}
           onPress={handleSave}
@@ -194,6 +218,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#EBEBEB",
     color: "#222",
+  },
+  hintText: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#777",
   },
   unitsRow: {
     flexDirection: "row",

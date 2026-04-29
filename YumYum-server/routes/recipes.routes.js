@@ -59,6 +59,7 @@ function getAvailableQuantity(userId, ingredientId, baseUnit) {
     FROM products
     WHERE user_id = ?
       AND ingredient_id = ?
+      AND (expires_at IS NULL OR expires_at >= date('now', 'localtime'))
     `,
     [baseUnit, userId, ingredientId]
   );
@@ -450,7 +451,12 @@ router.post("/:id/cook", (req, res) => {
             AND ingredient_id = ?
             AND normalized_quantity > 0
             AND normalized_unit = ?
-          ORDER BY created_at, id
+            AND (expires_at IS NULL OR expires_at >= date('now', 'localtime'))
+          ORDER BY
+            CASE WHEN expires_at IS NULL THEN 1 ELSE 0 END,
+            expires_at,
+            created_at,
+            id
           `,
           [USER_ID, ingredient.ingredient_id, ingredient.base_unit]
         );

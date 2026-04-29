@@ -59,6 +59,7 @@ router.post("/", (req, res) => {
         FROM products
         WHERE user_id = ?
           AND ingredient_id = ?
+          AND (expires_at IS NULL OR expires_at >= date('now', 'localtime'))
         `,
         [ingredient.base_unit, USER_ID, ingredient.ingredient_id]
       );

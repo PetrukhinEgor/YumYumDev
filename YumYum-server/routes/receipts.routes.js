@@ -7,6 +7,10 @@ const {
   isLikelyFoodProduct,
 } = require("../utils/productMatcher");
 const parseProductAmount = require("../utils/parseProductAmount");
+const {
+  calculateDefaultExpiresAt,
+  normalizeDateInput,
+} = require("../utils/shelfLife");
 
 const router = express.Router();
 
@@ -202,6 +206,8 @@ function buildReceiptDraftItem(item, index) {
     unit = quantityData.unit;
   }
 
+  const expiresAt = ingredientId ? calculateDefaultExpiresAt(ingredientId) : null;
+
   return {
     draftId: String(index),
     originalName,
@@ -213,6 +219,7 @@ function buildReceiptDraftItem(item, index) {
     ingredientId,
     quantity,
     unit,
+    expiresAt,
     reason: null,
     status:
       ingredientId && quantity != null && unit
@@ -262,6 +269,12 @@ function saveConfirmedItem(item) {
     normalizedUnit = unit;
   }
 
+  const requestedExpiresAt = normalizeDateInput(
+    item?.expiresAt ?? item?.expires_at
+  );
+  const defaultExpiresAt = calculateDefaultExpiresAt(ingredientId);
+  const expiresAt = requestedExpiresAt || defaultExpiresAt;
+
   run(
     `
     INSERT INTO products (
@@ -269,15 +282,22 @@ function saveConfirmedItem(item) {
       name,
       quantity,
       unit,
+      expires_at,
       ingredient_id,
       normalized_quantity,
       normalized_unit
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, name)
     DO UPDATE SET
       quantity = products.quantity + excluded.quantity,
       unit = COALESCE(products.unit, excluded.unit),
+      expires_at = CASE
+        WHEN products.expires_at IS NULL THEN excluded.expires_at
+        WHEN excluded.expires_at IS NULL THEN products.expires_at
+        WHEN excluded.expires_at < products.expires_at THEN excluded.expires_at
+        ELSE products.expires_at
+      END,
       ingredient_id = COALESCE(products.ingredient_id, excluded.ingredient_id),
       normalized_quantity = CASE
         WHEN products.normalized_quantity IS NOT NULL
@@ -293,6 +313,7 @@ function saveConfirmedItem(item) {
       name,
       quantity,
       unit,
+      expiresAt,
       ingredientId,
       normalizedQuantity,
       normalizedUnit,
@@ -301,7 +322,7 @@ function saveConfirmedItem(item) {
 
   const product = get(
     `
-    SELECT id, name, quantity, unit, ingredient_id, normalized_quantity, normalized_unit
+    SELECT id, name, quantity, unit, expires_at, ingredient_id, normalized_quantity, normalized_unit
     FROM products
     WHERE user_id = ?
       AND name = ?

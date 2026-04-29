@@ -2,6 +2,11 @@ const express = require("express");
 const router = express.Router();
 const { all, get, run } = require("../db");
 const { matchIngredient } = require("../utils/productMatcher");
+const {
+  calculateDefaultExpiresAt,
+  getExpirationStatus,
+  normalizeDateInput,
+} = require("../utils/shelfLife");
 
 const ALLOWED_UNITS = ["g", "ml", "pcs"];
 const USER_ID = 1;
@@ -110,6 +115,20 @@ function findProductByUserAndName(userId, name) {
   );
 }
 
+function withExpirationInfo(product) {
+  if (!product) return product;
+
+  const { daysUntilExpiration, expirationStatus } = getExpirationStatus(
+    product.expires_at
+  );
+
+  return {
+    ...product,
+    days_until_expiration: daysUntilExpiration,
+    expiration_status: expirationStatus,
+  };
+}
+
 router.get("/", (req, res) => {
   try {
     const rows = all(
@@ -136,7 +155,7 @@ router.get("/", (req, res) => {
     );
 
     const products = rows.map((row) => ({
-      ...row,
+      ...withExpirationInfo(row),
       display_amount: formatAmount(row.quantity, row.unit),
     }));
 
@@ -150,7 +169,7 @@ router.get("/", (req, res) => {
 });
 
 router.post("/", (req, res) => {
-  const { name, quantity, unit } = req.body;
+  const { name, quantity, unit, expiresAt, expires_at } = req.body;
 
   const trimmedName = String(name || "").trim();
   const parsedQuantity = Number(quantity);
@@ -184,6 +203,10 @@ router.post("/", (req, res) => {
       baseUnit
     );
 
+    const requestedExpiresAt = normalizeDateInput(expiresAt ?? expires_at);
+    const defaultExpiresAt = calculateDefaultExpiresAt(ingredientId);
+    const nextExpiresAt = requestedExpiresAt || defaultExpiresAt;
+
     run(
       `
       INSERT INTO products (
@@ -191,15 +214,22 @@ router.post("/", (req, res) => {
         name,
         quantity,
         unit,
+        expires_at,
         ingredient_id,
         normalized_quantity,
         normalized_unit
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, name)
       DO UPDATE SET
         quantity = products.quantity + excluded.quantity,
         unit = COALESCE(products.unit, excluded.unit),
+        expires_at = CASE
+          WHEN products.expires_at IS NULL THEN excluded.expires_at
+          WHEN excluded.expires_at IS NULL THEN products.expires_at
+          WHEN excluded.expires_at < products.expires_at THEN excluded.expires_at
+          ELSE products.expires_at
+        END,
         ingredient_id = COALESCE(products.ingredient_id, excluded.ingredient_id),
         normalized_quantity = CASE
           WHEN products.normalized_quantity IS NOT NULL
@@ -215,6 +245,7 @@ router.post("/", (req, res) => {
         trimmedName,
         parsedQuantity,
         normalizedInputUnit,
+        nextExpiresAt,
         ingredientId,
         normalizedQuantity,
         normalizedUnit,
@@ -226,7 +257,7 @@ router.post("/", (req, res) => {
     res.status(201).json({
       message: "Продукт добавлен",
       product: {
-        ...product,
+        ...withExpirationInfo(product),
         ingredient_name: product?.ingredient_name || ingredientName || null,
         display_amount: formatAmount(product?.quantity, product?.unit),
       },
@@ -241,7 +272,7 @@ router.post("/", (req, res) => {
 
 router.patch("/:id", (req, res) => {
   const { id } = req.params;
-  const { quantity, unit, name } = req.body;
+  const { quantity, unit, name, expiresAt, expires_at } = req.body;
 
   try {
     const existingProduct = get(
@@ -299,6 +330,12 @@ router.patch("/:id", (req, res) => {
       baseUnit
     );
 
+    const receivedExpiresAt = expiresAt ?? expires_at;
+    const nextExpiresAt =
+      receivedExpiresAt !== undefined
+        ? normalizeDateInput(receivedExpiresAt)
+        : existingProduct.expires_at || calculateDefaultExpiresAt(ingredientId);
+
     run(
       `
       UPDATE products
@@ -306,6 +343,7 @@ router.patch("/:id", (req, res) => {
         name = ?,
         quantity = ?,
         unit = ?,
+        expires_at = ?,
         ingredient_id = ?,
         normalized_quantity = ?,
         normalized_unit = ?
@@ -316,6 +354,7 @@ router.patch("/:id", (req, res) => {
         nextName,
         nextQuantity,
         nextUnit,
+        nextExpiresAt,
         ingredientId,
         normalizedQuantity,
         normalizedUnit,
@@ -329,7 +368,7 @@ router.patch("/:id", (req, res) => {
     res.json({
       message: "Продукт обновлён",
       product: {
-        ...product,
+        ...withExpirationInfo(product),
         ingredient_name: product?.ingredient_name || ingredientName || null,
         display_amount: formatAmount(product?.quantity, product?.unit),
       },

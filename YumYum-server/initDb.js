@@ -37,6 +37,15 @@ async function initDb() {
     CREATE UNIQUE INDEX IF NOT EXISTS products_user_id_name_unique
       ON products (user_id, name);
 
+    CREATE TABLE IF NOT EXISTS shelf_life_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ingredient_id INTEGER UNIQUE NOT NULL,
+      default_days INTEGER NOT NULL CHECK (default_days > 0),
+      storage_type TEXT DEFAULT 'fridge',
+      note TEXT,
+      FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS recipes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -63,6 +72,70 @@ async function initDb() {
 
   if (fs.existsSync(seedPath)) {
     db.exec(fs.readFileSync(seedPath, "utf8"));
+  }
+
+  const shelfLifeRules = [
+    ["Молоко", 5, "fridge", "После открытия лучше использовать быстрее"],
+    ["Кефир", 7, "fridge", null],
+    ["Сметана", 7, "fridge", null],
+    ["Творог", 5, "fridge", null],
+    ["Йогурт", 7, "fridge", null],
+    ["Сыр", 14, "fridge", null],
+    ["Масло", 30, "fridge", null],
+    ["Майонез", 30, "fridge", "После открытия срок может быть меньше"],
+    ["Яйца", 25, "fridge", null],
+    ["Курица", 2, "fridge", "Охлажденное мясо лучше использовать в первую очередь"],
+    ["Фарш", 1, "fridge", "Фарш портится быстрее цельного мяса"],
+    ["Свинина", 3, "fridge", null],
+    ["Говядина", 3, "fridge", null],
+    ["Рыба", 2, "fridge", null],
+    ["Картофель", 30, "pantry", null],
+    ["Морковь", 21, "fridge", null],
+    ["Лук", 30, "pantry", null],
+    ["Чеснок", 60, "pantry", null],
+    ["Огурец", 7, "fridge", null],
+    ["Помидор", 7, "room", null],
+    ["Капуста", 21, "fridge", null],
+    ["Свекла", 30, "fridge", null],
+    ["Гречка", 365, "pantry", null],
+    ["Рис", 365, "pantry", null],
+    ["Макароны", 365, "pantry", null],
+    ["Фасоль", 365, "pantry", null],
+    ["Хлеб", 4, "room", null],
+    ["Лаваш", 5, "room", null],
+    ["Багет", 2, "room", null],
+    ["Чипсы", 120, "pantry", null],
+    ["Паштет", 7, "fridge", "Если упаковка открыта, срок меньше"],
+    ["Мандарин", 10, "room", null],
+    ["Груша", 7, "room", null],
+    ["Банан", 5, "room", null],
+    ["Вода", 365, "pantry", null],
+    ["Профитроли", 3, "fridge", null],
+    ["Мороженое", 90, "freezer", null],
+    ["Приправа", 365, "pantry", null],
+    ["Печенье", 120, "pantry", null],
+    ["Кекс", 10, "room", null],
+    ["Леденцы", 365, "pantry", null],
+    ["Сок", 30, "pantry", "После открытия хранить в холодильнике"],
+    ["Нектар", 30, "pantry", "После открытия хранить в холодильнике"],
+    ["Пельмени", 90, "freezer", null],
+  ];
+
+  for (const [ingredientName, defaultDays, storageType, note] of shelfLifeRules) {
+    run(
+      `
+      INSERT OR IGNORE INTO shelf_life_rules (
+        ingredient_id,
+        default_days,
+        storage_type,
+        note
+      )
+      SELECT id, ?, ?, ?
+      FROM ingredients
+      WHERE name = ?
+      `,
+      [defaultDays, storageType, note, ingredientName]
+    );
   }
 
   const user = get("SELECT id FROM users WHERE email = ?", ["test@test.com"]);
