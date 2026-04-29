@@ -1,11 +1,30 @@
-// YumYum-server/routes/recipes.routes.js
-
 const express = require("express");
 const router = express.Router();
-const pool = require("../db");
+const { all, get, run, transaction } = require("../db");
 
-async function getRecipeIngredients(recipeId) {
-  const ingredientsResult = await pool.query(
+const USER_ID = 1;
+
+function parseRecipeSteps(recipe) {
+  if (!recipe) return recipe;
+
+  let recipeSteps = [];
+
+  if (recipe.recipe_steps) {
+    try {
+      recipeSteps = JSON.parse(recipe.recipe_steps);
+    } catch {
+      recipeSteps = [];
+    }
+  }
+
+  return {
+    ...recipe,
+    recipe_steps: recipeSteps,
+  };
+}
+
+function getRecipeIngredients(recipeId) {
+  return all(
     `
     SELECT
       ri.ingredient_id,
@@ -17,40 +36,38 @@ async function getRecipeIngredients(recipeId) {
     FROM recipe_ingredients ri
     JOIN ingredients i
       ON i.id = ri.ingredient_id
-    WHERE ri.recipe_id = $1
+    WHERE ri.recipe_id = ?
     ORDER BY ri.id
     `,
     [recipeId]
   );
-
-  return ingredientsResult.rows;
 }
 
-async function getAvailableQuantity(userId, ingredientId, baseUnit) {
-  const availableResult = await pool.query(
+function getAvailableQuantity(userId, ingredientId, baseUnit) {
+  const row = get(
     `
     SELECT COALESCE(
       SUM(
         CASE
           WHEN normalized_quantity > 0
-           AND normalized_unit = $3
+           AND normalized_unit = ?
           THEN normalized_quantity
           ELSE 0
         END
       ),
     0) AS available
     FROM products
-    WHERE user_id = $1
-      AND ingredient_id = $2
+    WHERE user_id = ?
+      AND ingredient_id = ?
     `,
-    [userId, ingredientId, baseUnit]
+    [baseUnit, userId, ingredientId]
   );
 
-  return Number(availableResult.rows[0].available);
+  return Number(row?.available || 0);
 }
 
-async function buildRecipeCheck(userId, recipeId) {
-  const recipeResult = await pool.query(
+function buildRecipeCheck(userId, recipeId) {
+  const recipeRow = get(
     `
     SELECT
       id,
@@ -61,22 +78,21 @@ async function buildRecipeCheck(userId, recipeId) {
       recipe_steps,
       category
     FROM recipes
-    WHERE id = $1
+    WHERE id = ?
     `,
     [recipeId]
   );
 
-  if (recipeResult.rows.length === 0) {
+  if (!recipeRow) {
     return null;
   }
 
-  const recipe = recipeResult.rows[0];
-  const ingredients = await getRecipeIngredients(recipeId);
-
+  const recipe = parseRecipeSteps(recipeRow);
+  const ingredients = getRecipeIngredients(recipeId);
   const ingredientsStatus = [];
 
   for (const ingredient of ingredients) {
-    const availableQty = await getAvailableQuantity(
+    const availableQty = getAvailableQuantity(
       userId,
       ingredient.ingredient_id,
       ingredient.base_unit
@@ -117,125 +133,72 @@ async function buildRecipeCheck(userId, recipeId) {
   };
 }
 
-router.get("/", async (req, res) => {
-  const userId = 1;
+function listRecipesWithCookStatus(filter) {
+  const recipeRows = all(
+    `
+    SELECT
+      id,
+      name,
+      description,
+      cooking_time_min,
+      servings,
+      recipe_steps,
+      category
+    FROM recipes
+    ORDER BY id DESC
+    `
+  );
 
+  const recipes = [];
+
+  for (const recipeRow of recipeRows) {
+    const recipe = parseRecipeSteps(recipeRow);
+    const check = buildRecipeCheck(USER_ID, recipe.id);
+    const canCook = check ? check.canCook : false;
+
+    if (filter === "available" && !canCook) continue;
+    if (filter === "missing" && canCook) continue;
+
+    recipes.push({
+      ...recipe,
+      can_cook: canCook,
+      ...(filter === "missing" && check
+        ? { missingIngredients: check.missingProducts }
+        : {}),
+    });
+  }
+
+  return recipes;
+}
+
+router.get("/", (req, res) => {
   try {
-    const recipesResult = await pool.query(`
-      SELECT
-        id,
-        name,
-        description,
-        cooking_time_min,
-        servings,
-        recipe_steps,
-        category
-      FROM recipes
-      ORDER BY id DESC
-    `);
-
-    const recipes = [];
-
-    for (const recipe of recipesResult.rows) {
-      const check = await buildRecipeCheck(userId, recipe.id);
-
-      recipes.push({
-        ...recipe,
-        can_cook: check ? check.canCook : false,
-      });
-    }
-
-    res.json(recipes);
+    res.json(listRecipesWithCookStatus());
   } catch (err) {
-    console.error("Ошибка получения рецептов:", err);
+    console.error("Recipes fetch error:", err);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-router.get("/available", async (req, res) => {
-  const userId = 1;
-
+router.get("/available", (req, res) => {
   try {
-    const recipesResult = await pool.query(`
-      SELECT
-        id,
-        name,
-        description,
-        cooking_time_min,
-        servings,
-        recipe_steps,
-        category
-      FROM recipes
-      ORDER BY id DESC
-    `);
-
-    const availableRecipes = [];
-
-    for (const recipe of recipesResult.rows) {
-      const check = await buildRecipeCheck(userId, recipe.id);
-
-      if (check?.canCook) {
-        availableRecipes.push({
-          ...recipe,
-          can_cook: true,
-        });
-      }
-    }
-
-    res.json(availableRecipes);
+    res.json(listRecipesWithCookStatus("available"));
   } catch (err) {
-    console.error("Ошибка получения доступных рецептов:", err);
-    res.status(500).json({
-      error: "Ошибка сервера",
-    });
+    console.error("Available recipes fetch error:", err);
+    res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-router.get("/missing", async (req, res) => {
-  const userId = 1;
-
+router.get("/missing", (req, res) => {
   try {
-    const recipesResult = await pool.query(`
-      SELECT
-        id,
-        name,
-        description,
-        cooking_time_min,
-        servings,
-        recipe_steps,
-        category
-      FROM recipes
-      ORDER BY id DESC
-    `);
-
-    const recipesWithMissing = [];
-
-    for (const recipe of recipesResult.rows) {
-      const check = await buildRecipeCheck(userId, recipe.id);
-
-      if (check && !check.canCook) {
-        recipesWithMissing.push({
-          ...recipe,
-          can_cook: false,
-          missingIngredients: check.missingProducts,
-        });
-      }
-    }
-
-    res.json(recipesWithMissing);
+    res.json(listRecipesWithCookStatus("missing"));
   } catch (err) {
-    console.error(
-      "Ошибка получения рецептов с недостающими ингредиентами:",
-      err
-    );
-
-    res.status(500).json({
-      error: "Ошибка сервера",
-    });
+    console.error("Missing recipes fetch error:", err);
+    res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", (req, res) => {
   const {
     name,
     description,
@@ -284,103 +247,97 @@ router.post("/", async (req, res) => {
     });
   }
 
-  const client = await pool.connect();
-
   try {
-    await client.query("BEGIN");
-
-    const recipeInsertResult = await client.query(
-      `
-      INSERT INTO recipes (
-        name,
-        description,
-        cooking_time_min,
-        servings,
-        recipe_steps,
-        category
-      )
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id
-      `,
-      [
-        trimmedName,
-        trimmedDescription || null,
-        Number.isNaN(parsedCookingTime) ? null : parsedCookingTime,
-        Number.isNaN(parsedServings) ? null : parsedServings,
-        normalizedSteps,
-        normalizedCategory,
-      ]
-    );
-
-    const recipeId = recipeInsertResult.rows[0].id;
-
-    for (const ingredient of normalizedIngredients) {
-      const ingredientResult = await client.query(
+    const createRecipeTransaction = transaction(() => {
+      const recipeResult = run(
         `
-        SELECT id, name, base_unit
-        FROM ingredients
-        WHERE LOWER(name) = LOWER($1)
-        LIMIT 1
+        INSERT INTO recipes (
+          name,
+          description,
+          cooking_time_min,
+          servings,
+          recipe_steps,
+          category
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
         `,
-        [ingredient.name]
+        [
+          trimmedName,
+          trimmedDescription || null,
+          Number.isNaN(parsedCookingTime) ? null : parsedCookingTime,
+          Number.isNaN(parsedServings) ? null : parsedServings,
+          JSON.stringify(normalizedSteps),
+          normalizedCategory,
+        ]
       );
 
-      if (ingredientResult.rows.length === 0) {
-        throw new Error(`Ингредиент "${ingredient.name}" не найден`);
-      }
+      const recipeId = Number(recipeResult.lastInsertRowid);
 
-      const ingredientRow = ingredientResult.rows[0];
+      for (const ingredient of normalizedIngredients) {
+        const ingredientRow = get(
+          `
+          SELECT id, name, base_unit
+          FROM ingredients
+          WHERE LOWER(name) = LOWER(?)
+          LIMIT 1
+          `,
+          [ingredient.name]
+        );
 
-      if (ingredient.unit !== ingredientRow.base_unit) {
-        throw new Error(
-          `Для ингредиента "${ingredientRow.name}" используй единицу "${ingredientRow.base_unit}"`
+        if (!ingredientRow) {
+          throw new Error(`Ингредиент "${ingredient.name}" не найден`);
+        }
+
+        if (ingredient.unit !== ingredientRow.base_unit) {
+          throw new Error(
+            `Для ингредиента "${ingredientRow.name}" используй единицу "${ingredientRow.base_unit}"`
+          );
+        }
+
+        run(
+          `
+          INSERT INTO recipe_ingredients (
+            recipe_id,
+            ingredient_id,
+            product_name,
+            quantity,
+            unit
+          )
+          VALUES (?, ?, ?, ?, ?)
+          `,
+          [
+            recipeId,
+            ingredientRow.id,
+            ingredientRow.name,
+            ingredient.quantity,
+            ingredient.unit,
+          ]
         );
       }
 
-      await client.query(
-        `
-        INSERT INTO recipe_ingredients (
-          recipe_id,
-          ingredient_id,
-          product_name,
-          quantity,
-          unit
-        )
-        VALUES ($1, $2, $3, $4, $5)
-        `,
-        [
-          recipeId,
-          ingredientRow.id,
-          ingredientRow.name,
-          ingredient.quantity,
-          ingredient.unit,
-        ]
-      );
-    }
+      return recipeId;
+    });
 
-    await client.query("COMMIT");
+    const recipeId = createRecipeTransaction();
 
     res.status(201).json({
       message: "Рецепт создан",
       recipeId,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("Ошибка создания рецепта:", err);
+    console.error("Recipe create error:", err);
 
     res.status(400).json({
       error: err.message || "Не удалось создать рецепт",
     });
-  } finally {
-    client.release();
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", (req, res) => {
   const { id } = req.params;
 
   try {
-    const recipe = await pool.query(
+    const recipeRow = get(
       `
       SELECT
         id,
@@ -391,18 +348,18 @@ router.get("/:id", async (req, res) => {
         recipe_steps,
         category
       FROM recipes
-      WHERE id = $1
+      WHERE id = ?
       `,
       [id]
     );
 
-    if (recipe.rows.length === 0) {
+    if (!recipeRow) {
       return res.status(404).json({
         error: "Рецепт не найден",
       });
     }
 
-    const ingredients = await pool.query(
+    const ingredients = all(
       `
       SELECT
         ri.ingredient_id,
@@ -413,28 +370,27 @@ router.get("/:id", async (req, res) => {
       FROM recipe_ingredients ri
       JOIN ingredients i
         ON i.id = ri.ingredient_id
-      WHERE ri.recipe_id = $1
+      WHERE ri.recipe_id = ?
       ORDER BY ri.id
       `,
       [id]
     );
 
     res.json({
-      ...recipe.rows[0],
-      ingredients: ingredients.rows,
+      ...parseRecipeSteps(recipeRow),
+      ingredients,
     });
   } catch (err) {
-    console.error("Ошибка получения рецепта:", err);
+    console.error("Recipe fetch error:", err);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-router.get("/:id/check", async (req, res) => {
+router.get("/:id/check", (req, res) => {
   const recipeId = req.params.id;
-  const userId = 1;
 
   try {
-    const check = await buildRecipeCheck(userId, recipeId);
+    const check = buildRecipeCheck(USER_ID, recipeId);
 
     if (!check) {
       return res.status(404).json({
@@ -444,185 +400,141 @@ router.get("/:id/check", async (req, res) => {
 
     res.json(check);
   } catch (err) {
-    console.error("Ошибка проверки рецепта:", err);
+    console.error("Recipe check error:", err);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-router.post("/:id/cook", async (req, res) => {
+router.post("/:id/cook", (req, res) => {
   const recipeId = req.params.id;
-  const userId = 1;
-
-  const client = await pool.connect();
 
   try {
-    await client.query("BEGIN");
-
-    const recipeResult = await client.query(
-      `
-      SELECT id, name
-      FROM recipes
-      WHERE id = $1
-      `,
-      [recipeId]
-    );
-
-    if (recipeResult.rows.length === 0) {
-      throw new Error("Рецепт не найден");
-    }
-
-    const ingredientsResult = await client.query(
-      `
-      SELECT
-        ri.ingredient_id,
-        ri.product_name,
-        ri.quantity,
-        ri.unit,
-        i.name,
-        i.base_unit
-      FROM recipe_ingredients ri
-      JOIN ingredients i
-        ON i.id = ri.ingredient_id
-      WHERE ri.recipe_id = $1
-      `,
-      [recipeId]
-    );
-
-    const ingredients = ingredientsResult.rows;
-
-    for (const ingredient of ingredients) {
-      const availableResult = await client.query(
+    const cookTransaction = transaction(() => {
+      const recipe = get(
         `
-        SELECT COALESCE(
-          SUM(
-            CASE
-              WHEN normalized_quantity > 0
-               AND normalized_unit = $3
-              THEN normalized_quantity
-              ELSE 0
-            END
-          ),
-        0) AS available
-        FROM products
-        WHERE user_id = $1
-          AND ingredient_id = $2
+        SELECT id, name
+        FROM recipes
+        WHERE id = ?
         `,
-        [userId, ingredient.ingredient_id, ingredient.base_unit]
+        [recipeId]
       );
 
-      const availableQty = Number(availableResult.rows[0].available);
-      const neededQty = Number(ingredient.quantity);
-
-      if (availableQty < neededQty) {
-        throw new Error(`Недостаточно продукта: ${ingredient.name}`);
+      if (!recipe) {
+        throw new Error("Рецепт не найден");
       }
-    }
 
-    for (const ingredient of ingredients) {
-      let remaining = Number(ingredient.quantity);
+      const ingredients = getRecipeIngredients(recipeId);
 
-      const productsResult = await client.query(
-        `
-        SELECT id, normalized_quantity
-        FROM products
-        WHERE user_id = $1
-          AND ingredient_id = $2
-          AND normalized_quantity > 0
-          AND normalized_unit = $3
-        ORDER BY created_at
-        `,
-        [userId, ingredient.ingredient_id, ingredient.base_unit]
-      );
-
-      const products = productsResult.rows;
-
-      for (const product of products) {
-        if (remaining <= 0) break;
-
-        const available = Number(product.normalized_quantity);
-        const toSubtract = Math.min(available, remaining);
-
-        await client.query(
-          `
-          UPDATE products
-          SET normalized_quantity = normalized_quantity - $1
-          WHERE id = $2
-          `,
-          [toSubtract, product.id]
+      for (const ingredient of ingredients) {
+        const availableQty = getAvailableQuantity(
+          USER_ID,
+          ingredient.ingredient_id,
+          ingredient.base_unit
         );
 
-        remaining -= toSubtract;
-      }
-    }
+        const neededQty = Number(ingredient.quantity);
 
-    await client.query("COMMIT");
+        if (availableQty < neededQty) {
+          throw new Error(`Недостаточно продукта: ${ingredient.name}`);
+        }
+      }
+
+      for (const ingredient of ingredients) {
+        let remaining = Number(ingredient.quantity);
+
+        const products = all(
+          `
+          SELECT id, normalized_quantity
+          FROM products
+          WHERE user_id = ?
+            AND ingredient_id = ?
+            AND normalized_quantity > 0
+            AND normalized_unit = ?
+          ORDER BY created_at, id
+          `,
+          [USER_ID, ingredient.ingredient_id, ingredient.base_unit]
+        );
+
+        for (const product of products) {
+          if (remaining <= 0) break;
+
+          const available = Number(product.normalized_quantity);
+          const toSubtract = Math.min(available, remaining);
+
+          run(
+            `
+            UPDATE products
+            SET normalized_quantity = normalized_quantity - ?
+            WHERE id = ?
+            `,
+            [toSubtract, product.id]
+          );
+
+          remaining -= toSubtract;
+        }
+      }
+    });
+
+    cookTransaction();
 
     res.json({
-      message: "Блюдо приготовлено ✅",
+      message: "Блюдо приготовлено",
     });
   } catch (err) {
-    await client.query("ROLLBACK");
-
-    console.error("Ошибка приготовления:", err);
+    console.error("Recipe cook error:", err);
 
     res.status(400).json({
       error: err.message,
     });
-  } finally {
-    client.release();
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", (req, res) => {
   const recipeId = req.params.id;
-  const client = await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    const deleteTransaction = transaction(() => {
+      const recipe = get(
+        `
+        SELECT id
+        FROM recipes
+        WHERE id = ?
+        `,
+        [recipeId]
+      );
 
-    const recipeResult = await client.query(
-      `
-      SELECT id
-      FROM recipes
-      WHERE id = $1
-      `,
-      [recipeId]
-    );
+      if (!recipe) {
+        throw new Error("Рецепт не найден");
+      }
 
-    if (recipeResult.rows.length === 0) {
-      throw new Error("Рецепт не найден");
-    }
+      run(
+        `
+        DELETE FROM recipe_ingredients
+        WHERE recipe_id = ?
+        `,
+        [recipeId]
+      );
 
-    await client.query(
-      `
-      DELETE FROM recipe_ingredients
-      WHERE recipe_id = $1
-      `,
-      [recipeId]
-    );
+      run(
+        `
+        DELETE FROM recipes
+        WHERE id = ?
+        `,
+        [recipeId]
+      );
+    });
 
-    await client.query(
-      `
-      DELETE FROM recipes
-      WHERE id = $1
-      `,
-      [recipeId]
-    );
-
-    await client.query("COMMIT");
+    deleteTransaction();
 
     res.json({
       message: "Рецепт удалён",
     });
   } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("Ошибка удаления рецепта:", err);
+    console.error("Recipe delete error:", err);
 
     res.status(400).json({
       error: err.message || "Не удалось удалить рецепт",
     });
-  } finally {
-    client.release();
   }
 });
 

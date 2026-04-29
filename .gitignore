@@ -11,6 +11,11 @@ web-build
 .env
 .env.local
 
+# sqlite
+YumYum-server/data/*.db
+YumYum-server/data/*.db-shm
+YumYum-server/data/*.db-wal
+
 # logs
 npm-debug.log*
 

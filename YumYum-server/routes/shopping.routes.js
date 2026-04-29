@@ -1,18 +1,10 @@
-// YumYum-server/routes/shopping.routes.js
-
 const express = require("express");
 const router = express.Router();
-const pool = require("../db");
+const { all, get } = require("../db");
 
-/*
-================================
-Сформировать список покупок
-POST /api/shopping-list
-================================
-*/
+const USER_ID = 1;
 
-router.post("/", async (req, res) => {
-  const userId = 1;
+router.post("/", (req, res) => {
   const { recipes } = req.body;
 
   if (!recipes || !Array.isArray(recipes) || recipes.length === 0) {
@@ -22,12 +14,17 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    /*
-    ================================
-    1. Получаем все ингредиенты рецептов
-    ================================
-    */
-    const ingredientsResult = await pool.query(
+    const recipeIds = recipes.map((id) => Number(id)).filter(Boolean);
+
+    if (recipeIds.length === 0) {
+      return res.status(400).json({
+        error: "Не передан список рецептов",
+      });
+    }
+
+    const placeholders = recipeIds.map(() => "?").join(", ");
+
+    const ingredients = all(
       `
       SELECT
         ri.ingredient_id,
@@ -37,50 +34,38 @@ router.post("/", async (req, res) => {
       FROM recipe_ingredients ri
       JOIN ingredients i
         ON i.id = ri.ingredient_id
-      WHERE ri.recipe_id = ANY($1)
+      WHERE ri.recipe_id IN (${placeholders})
       GROUP BY ri.ingredient_id, i.name, i.base_unit
       ORDER BY i.name
       `,
-      [recipes]
+      recipeIds
     );
 
-    const ingredients = ingredientsResult.rows;
     const shoppingList = [];
 
-    /*
-    ================================
-    2. Проверяем продукты пользователя
-    по normalized_quantity
-    ================================
-    */
     for (const ingredient of ingredients) {
-      const availableResult = await pool.query(
+      const availableRow = get(
         `
         SELECT COALESCE(
           SUM(
             CASE
               WHEN normalized_quantity > 0
-               AND normalized_unit = $3
+               AND normalized_unit = ?
               THEN normalized_quantity
               ELSE 0
             END
           ),
         0) AS available
         FROM products
-        WHERE user_id = $1
-        AND ingredient_id = $2
+        WHERE user_id = ?
+          AND ingredient_id = ?
         `,
-        [userId, ingredient.ingredient_id, ingredient.base_unit]
+        [ingredient.base_unit, USER_ID, ingredient.ingredient_id]
       );
 
-      const available = Number(availableResult.rows[0].available);
+      const available = Number(availableRow?.available || 0);
       const needed = Number(ingredient.total_needed);
 
-      /*
-      ================================
-      3. Если не хватает — добавляем в shopping list
-      ================================
-      */
       if (available < needed) {
         shoppingList.push({
           name: ingredient.name,
@@ -92,16 +77,11 @@ router.post("/", async (req, res) => {
       }
     }
 
-    /*
-    ================================
-    4. Ответ
-    ================================
-    */
     res.json({
       shoppingList,
     });
   } catch (err) {
-    console.error("Ошибка формирования списка покупок:", err);
+    console.error("Shopping list error:", err);
 
     res.status(500).json({
       error: "Ошибка сервера",

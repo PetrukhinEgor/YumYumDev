@@ -1,7 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const pool = require("../db");
+const { all, get, run } = require("../db");
 const { matchIngredient } = require("../utils/productMatcher");
+
+const ALLOWED_UNITS = ["g", "ml", "pcs"];
+const USER_ID = 1;
 
 function formatAmount(quantity, unit) {
   if (quantity == null || !unit) return null;
@@ -14,7 +17,7 @@ function formatAmount(quantity, unit) {
   return `${value} ${unit}`;
 }
 
-async function resolveIngredientData(productName) {
+function resolveIngredientData(productName) {
   const ingredientName = matchIngredient(productName);
 
   if (!ingredientName) {
@@ -25,17 +28,17 @@ async function resolveIngredientData(productName) {
     };
   }
 
-  const ingredientResult = await pool.query(
+  const ingredient = get(
     `
     SELECT id, name, base_unit
     FROM ingredients
-    WHERE LOWER(name) = LOWER($1)
+    WHERE LOWER(name) = LOWER(?)
     LIMIT 1
     `,
     [ingredientName]
   );
 
-  if (ingredientResult.rows.length === 0) {
+  if (!ingredient) {
     return {
       ingredientName,
       ingredientId: null,
@@ -44,9 +47,9 @@ async function resolveIngredientData(productName) {
   }
 
   return {
-    ingredientName: ingredientResult.rows[0].name,
-    ingredientId: ingredientResult.rows[0].id,
-    baseUnit: ingredientResult.rows[0].base_unit,
+    ingredientName: ingredient.name,
+    ingredientId: ingredient.id,
+    baseUnit: ingredient.base_unit,
   };
 }
 
@@ -81,11 +84,35 @@ function buildNormalizedData(quantity, unit, baseUnit) {
   };
 }
 
-router.get("/", async (req, res) => {
-  const userId = 1;
+function findProductByUserAndName(userId, name) {
+  return get(
+    `
+    SELECT
+      p.id,
+      p.user_id,
+      p.name,
+      p.quantity,
+      p.unit,
+      p.expires_at,
+      p.created_at,
+      p.ingredient_id,
+      p.normalized_quantity,
+      p.normalized_unit,
+      i.name AS ingredient_name
+    FROM products p
+    LEFT JOIN ingredients i
+      ON i.id = p.ingredient_id
+    WHERE p.user_id = ?
+      AND p.name = ?
+    LIMIT 1
+    `,
+    [userId, name]
+  );
+}
 
+router.get("/", (req, res) => {
   try {
-    const result = await pool.query(
+    const rows = all(
       `
       SELECT
         p.id,
@@ -102,28 +129,27 @@ router.get("/", async (req, res) => {
       FROM products p
       LEFT JOIN ingredients i
         ON i.id = p.ingredient_id
-      WHERE p.user_id = $1
+      WHERE p.user_id = ?
       ORDER BY p.created_at DESC, p.id DESC
       `,
-      [userId]
+      [USER_ID]
     );
 
-    const products = result.rows.map((row) => ({
+    const products = rows.map((row) => ({
       ...row,
       display_amount: formatAmount(row.quantity, row.unit),
     }));
 
     res.json(products);
   } catch (err) {
-    console.error("Ошибка получения продуктов:", err);
+    console.error("Products fetch error:", err);
     res.status(500).json({
       error: "Ошибка сервера",
     });
   }
 });
 
-router.post("/", async (req, res) => {
-  const userId = 1;
+router.post("/", (req, res) => {
   const { name, quantity, unit } = req.body;
 
   const trimmedName = String(name || "").trim();
@@ -142,7 +168,7 @@ router.post("/", async (req, res) => {
     });
   }
 
-  if (!["g", "ml", "pcs"].includes(normalizedInputUnit)) {
+  if (!ALLOWED_UNITS.includes(normalizedInputUnit)) {
     return res.status(400).json({
       error: "Допустимые единицы: g, ml, pcs",
     });
@@ -150,7 +176,7 @@ router.post("/", async (req, res) => {
 
   try {
     const { ingredientName, ingredientId, baseUnit } =
-      await resolveIngredientData(trimmedName);
+      resolveIngredientData(trimmedName);
 
     const { normalizedQuantity, normalizedUnit } = buildNormalizedData(
       parsedQuantity,
@@ -158,7 +184,7 @@ router.post("/", async (req, res) => {
       baseUnit
     );
 
-    const insertResult = await pool.query(
+    run(
       `
       INSERT INTO products (
         user_id,
@@ -169,24 +195,23 @@ router.post("/", async (req, res) => {
         normalized_quantity,
         normalized_unit
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (user_id, name)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, name)
       DO UPDATE SET
-        quantity = products.quantity + EXCLUDED.quantity,
-        unit = COALESCE(products.unit, EXCLUDED.unit),
-        ingredient_id = COALESCE(products.ingredient_id, EXCLUDED.ingredient_id),
+        quantity = products.quantity + excluded.quantity,
+        unit = COALESCE(products.unit, excluded.unit),
+        ingredient_id = COALESCE(products.ingredient_id, excluded.ingredient_id),
         normalized_quantity = CASE
           WHEN products.normalized_quantity IS NOT NULL
-           AND EXCLUDED.normalized_quantity IS NOT NULL
-           AND products.normalized_unit = EXCLUDED.normalized_unit
-          THEN products.normalized_quantity + EXCLUDED.normalized_quantity
-          ELSE COALESCE(products.normalized_quantity, EXCLUDED.normalized_quantity)
+           AND excluded.normalized_quantity IS NOT NULL
+           AND products.normalized_unit = excluded.normalized_unit
+          THEN products.normalized_quantity + excluded.normalized_quantity
+          ELSE COALESCE(products.normalized_quantity, excluded.normalized_quantity)
         END,
-        normalized_unit = COALESCE(products.normalized_unit, EXCLUDED.normalized_unit)
-      RETURNING id, name, quantity, unit, ingredient_id, normalized_quantity, normalized_unit
+        normalized_unit = COALESCE(products.normalized_unit, excluded.normalized_unit)
       `,
       [
-        userId,
+        USER_ID,
         trimmedName,
         parsedQuantity,
         normalizedInputUnit,
@@ -196,49 +221,45 @@ router.post("/", async (req, res) => {
       ]
     );
 
+    const product = findProductByUserAndName(USER_ID, trimmedName);
+
     res.status(201).json({
       message: "Продукт добавлен",
       product: {
-        ...insertResult.rows[0],
-        ingredient_name: ingredientName || null,
-        display_amount: formatAmount(
-          insertResult.rows[0].quantity,
-          insertResult.rows[0].unit
-        ),
+        ...product,
+        ingredient_name: product?.ingredient_name || ingredientName || null,
+        display_amount: formatAmount(product?.quantity, product?.unit),
       },
     });
   } catch (err) {
-    console.error("Ошибка ручного добавления продукта:", err);
+    console.error("Product create error:", err);
     res.status(500).json({
       error: "Ошибка сервера",
     });
   }
 });
 
-router.patch("/:id", async (req, res) => {
-  const userId = 1;
+router.patch("/:id", (req, res) => {
   const { id } = req.params;
   const { quantity, unit, name } = req.body;
 
   try {
-    const existingResult = await pool.query(
+    const existingProduct = get(
       `
       SELECT *
       FROM products
-      WHERE id = $1
-        AND user_id = $2
+      WHERE id = ?
+        AND user_id = ?
       LIMIT 1
       `,
-      [id, userId]
+      [id, USER_ID]
     );
 
-    if (existingResult.rows.length === 0) {
+    if (!existingProduct) {
       return res.status(404).json({
         error: "Продукт не найден",
       });
     }
-
-    const existingProduct = existingResult.rows[0];
 
     const nextName =
       name !== undefined ? String(name).trim() : String(existingProduct.name || "").trim();
@@ -263,14 +284,14 @@ router.patch("/:id", async (req, res) => {
       });
     }
 
-    if (!["g", "ml", "pcs"].includes(nextUnit)) {
+    if (!ALLOWED_UNITS.includes(nextUnit)) {
       return res.status(400).json({
         error: "Допустимые единицы: g, ml, pcs",
       });
     }
 
     const { ingredientName, ingredientId, baseUnit } =
-      await resolveIngredientData(nextName);
+      resolveIngredientData(nextName);
 
     const { normalizedQuantity, normalizedUnit } = buildNormalizedData(
       nextQuantity,
@@ -278,19 +299,18 @@ router.patch("/:id", async (req, res) => {
       baseUnit
     );
 
-    const result = await pool.query(
+    run(
       `
       UPDATE products
       SET
-        name = $1,
-        quantity = $2,
-        unit = $3,
-        ingredient_id = $4,
-        normalized_quantity = $5,
-        normalized_unit = $6
-      WHERE id = $7
-        AND user_id = $8
-      RETURNING *
+        name = ?,
+        quantity = ?,
+        unit = ?,
+        ingredient_id = ?,
+        normalized_quantity = ?,
+        normalized_unit = ?
+      WHERE id = ?
+        AND user_id = ?
       `,
       [
         nextName,
@@ -300,42 +320,42 @@ router.patch("/:id", async (req, res) => {
         normalizedQuantity,
         normalizedUnit,
         id,
-        userId,
+        USER_ID,
       ]
     );
+
+    const product = findProductByUserAndName(USER_ID, nextName);
 
     res.json({
       message: "Продукт обновлён",
       product: {
-        ...result.rows[0],
-        ingredient_name: ingredientName || null,
-        display_amount: formatAmount(result.rows[0].quantity, result.rows[0].unit),
+        ...product,
+        ingredient_name: product?.ingredient_name || ingredientName || null,
+        display_amount: formatAmount(product?.quantity, product?.unit),
       },
     });
   } catch (err) {
-    console.error("Ошибка обновления продукта:", err);
+    console.error("Product update error:", err);
     res.status(500).json({
       error: "Ошибка сервера",
     });
   }
 });
 
-router.delete("/:id", async (req, res) => {
-  const userId = 1;
+router.delete("/:id", (req, res) => {
   const { id } = req.params;
 
   try {
-    const result = await pool.query(
+    const result = run(
       `
       DELETE FROM products
-      WHERE id = $1
-        AND user_id = $2
-      RETURNING id
+      WHERE id = ?
+        AND user_id = ?
       `,
-      [id, userId]
+      [id, USER_ID]
     );
 
-    if (result.rows.length === 0) {
+    if (result.changes === 0) {
       return res.status(404).json({
         error: "Продукт не найден",
       });
@@ -345,7 +365,7 @@ router.delete("/:id", async (req, res) => {
       message: "Продукт удалён",
     });
   } catch (err) {
-    console.error("Ошибка удаления продукта:", err);
+    console.error("Product delete error:", err);
     res.status(500).json({
       error: "Ошибка сервера",
     });
