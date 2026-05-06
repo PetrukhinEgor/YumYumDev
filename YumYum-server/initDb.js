@@ -46,6 +46,20 @@ async function initDb() {
       FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS product_match_keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      keyword TEXT UNIQUE NOT NULL,
+      ingredient_id INTEGER,
+      is_food INTEGER NOT NULL DEFAULT 1 CHECK (is_food IN (0, 1)),
+      priority INTEGER NOT NULL DEFAULT 100,
+      source TEXT NOT NULL DEFAULT 'system',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_match_keywords_priority
+      ON product_match_keywords (priority, keyword);
+
     CREATE TABLE IF NOT EXISTS recipes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -72,6 +86,16 @@ async function initDb() {
 
   if (fs.existsSync(seedPath)) {
     db.exec(fs.readFileSync(seedPath, "utf8"));
+  }
+
+  const productKeywordsSeedPath = path.join(
+    __dirname,
+    "data",
+    "seed_product_keywords.sql"
+  );
+
+  if (fs.existsSync(productKeywordsSeedPath)) {
+    db.exec(fs.readFileSync(productKeywordsSeedPath, "utf8"));
   }
 
   const shelfLifeRules = [

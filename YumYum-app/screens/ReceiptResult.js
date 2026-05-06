@@ -41,6 +41,8 @@ export default function ReceiptResult({ route, navigation }) {
         const receiptItems = (res.data?.items || []).map((item) => ({
           ...item,
           expiresAt: toDisplayDate(item.expiresAt || item.expires_at),
+          keyword: item.keywordCandidate || item.matchedKeyword || "",
+          rememberKeywordRule: false,
         }));
 
         setItems(receiptItems);
@@ -68,6 +70,7 @@ export default function ReceiptResult({ route, navigation }) {
     const quantity = Number(item.quantity);
     const unit = String(item.unit || "").trim().toLowerCase();
     const expiresAt = String(item.expiresAt || item.expires_at || "").trim();
+    const keyword = String(item.keyword || "").trim();
 
     if (!item.include) return "excluded";
     if (!item.isEdible) return "non_food";
@@ -75,6 +78,7 @@ export default function ReceiptResult({ route, navigation }) {
     if (!quantity || quantity <= 0) return "needs_review";
     if (!UNIT_OPTIONS.includes(unit)) return "needs_review";
     if (expiresAt && !isDisplayDate(expiresAt)) return "needs_review";
+    if (item.rememberKeywordRule && !keyword) return "needs_review";
     return "ready";
   };
 
@@ -109,13 +113,15 @@ export default function ReceiptResult({ route, navigation }) {
       const quantity = Number(item.quantity);
       const unit = String(item.unit || "").trim().toLowerCase();
       const expiresAt = String(item.expiresAt || item.expires_at || "").trim();
+      const keyword = String(item.keyword || "").trim();
 
       return (
         !name ||
         !quantity ||
         quantity <= 0 ||
         !UNIT_OPTIONS.includes(unit) ||
-        (expiresAt && !isDisplayDate(expiresAt))
+        (expiresAt && !isDisplayDate(expiresAt)) ||
+        (item.rememberKeywordRule && !keyword)
       );
     });
 
@@ -376,6 +382,41 @@ export default function ReceiptResult({ route, navigation }) {
                 placeholder="Например: 03-05-2026"
                 placeholderTextColor="#999"
               />
+
+              <View style={styles.rememberRuleBlock}>
+                <View style={styles.rememberRuleHeader}>
+                  <View style={styles.rememberRuleTextWrap}>
+                    <Text style={styles.switchLabel}>Запомнить правило</Text>
+                    <Text style={styles.ruleHintText}>
+                      В следующий раз похожий товар будет распознан по этому ключевому слову.
+                    </Text>
+                  </View>
+
+                  <Switch
+                    value={!!item.rememberKeywordRule}
+                    onValueChange={(value) =>
+                      updateItem(item.draftId, { rememberKeywordRule: value })
+                    }
+                    trackColor={{ false: "#D7D7D7", true: "#8AD8D2" }}
+                    thumbColor={item.rememberKeywordRule ? "#28B3AC" : "#F4F3F4"}
+                  />
+                </View>
+
+                {item.rememberKeywordRule ? (
+                  <>
+                    <Text style={styles.label}>Ключевое слово</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={String(item.keyword || "")}
+                      onChangeText={(value) =>
+                        updateItem(item.draftId, { keyword: value })
+                      }
+                      placeholder="Например: сырок"
+                      placeholderTextColor="#999"
+                    />
+                  </>
+                ) : null}
+              </View>
 
               <Text style={styles.helperText}>
                 Вы можете вручную исправить название, количество, единицу, категорию и срок годности перед сохранением.
@@ -661,6 +702,29 @@ const styles = StyleSheet.create({
     color: "#9A4D3A",
     marginTop: -4,
     marginBottom: 12,
+  },
+  rememberRuleBlock: {
+    backgroundColor: "rgba(255,255,255,0.6)",
+    borderWidth: 1,
+    borderColor: "#D7DEE3",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  rememberRuleHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  rememberRuleTextWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  ruleHintText: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#667085",
   },
   confirmButton: {
     backgroundColor: "#28B3AC",

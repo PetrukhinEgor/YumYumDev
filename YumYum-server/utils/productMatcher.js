@@ -1,310 +1,177 @@
-// YumYum-server/utils/productMatcher.js
+// Product recognition rules live in SQLite table product_match_keywords.
+// This file is only the matching engine that applies those rules.
 
-function cleanName(productName = "") {
-  return productName.toLowerCase().trim();
+const { all, get, run } = require("../db");
+
+function cleanName(value = "") {
+  return String(value).toLowerCase().trim();
 }
 
-function containsAny(text, words = []) {
-  return words.some((word) => text.includes(word));
+function normalizeKeyword(value = "") {
+  return cleanName(value).replace(/\s+/g, " ");
+}
+
+function getKeywordRules() {
+  return all(
+    `
+    SELECT
+      pmk.id,
+      pmk.keyword,
+      pmk.ingredient_id,
+      pmk.is_food,
+      pmk.priority,
+      pmk.source,
+      i.name AS ingredient_name,
+      i.base_unit
+    FROM product_match_keywords pmk
+    LEFT JOIN ingredients i
+      ON i.id = pmk.ingredient_id
+    ORDER BY
+      pmk.priority ASC,
+      LENGTH(pmk.keyword) DESC,
+      pmk.id ASC
+    `
+  );
+}
+
+function findMatchingRule(productName) {
+  const name = cleanName(productName);
+
+  if (!name) return null;
+
+  const rules = getKeywordRules();
+
+  return (
+    rules.find((rule) => {
+      const keyword = normalizeKeyword(rule.keyword);
+      return keyword && name.includes(keyword);
+    }) || null
+  );
+}
+
+function matchProduct(productName) {
+  const rule = findMatchingRule(productName);
+
+  if (!rule) {
+    return {
+      matched: false,
+      isFood: false,
+      ingredientName: null,
+      ingredientId: null,
+      baseUnit: null,
+      keyword: null,
+      source: null,
+    };
+  }
+
+  const isFood = Number(rule.is_food) === 1;
+
+  return {
+    matched: true,
+    isFood,
+    ingredientName: isFood ? rule.ingredient_name : null,
+    ingredientId: isFood ? rule.ingredient_id : null,
+    baseUnit: isFood ? rule.base_unit : null,
+    keyword: rule.keyword,
+    source: rule.source,
+  };
 }
 
 function isNonFoodProduct(productName) {
-  const name = cleanName(productName);
-
-  const nonFoodKeywords = [
-    "парад скидок",
-    "скидка",
-    "акция",
-    "пакет",
-    "майка",
-    "фасовоч",
-    "мешок",
-    "однораз",
-    "салфет",
-    "полотенц",
-    "туалетн",
-    "бумага",
-
-    "сигарет",
-    "parliament",
-    "marlboro",
-    "winston",
-    "chesterfield",
-    "табак",
-    "стик",
-    "iqos",
-
-    "мыло",
-    "шампун",
-    "бальзам",
-    "порошок",
-    "ополаскив",
-    "кондиционер",
-    "чистящ",
-    "моющ",
-    "доместос",
-    "fairy",
-    "sorti",
-    "aos",
-    "зубная паста",
-    "щетка",
-    "дезодорант",
-    "проклад",
-    "тампон",
-
-    "губка",
-    "тряпк",
-    "перчатк",
-    "батарейк",
-    "лампа",
-    "фольга",
-    "пленка",
-    "контейнер",
-
-    "whiskas",
-    "kitekat",
-    "felix",
-    "pedigree",
-    "корм для кош",
-    "корм для собак",
-    "наполнитель",
-
-    "зажигал",
-    "спички",
-  ];
-
-  return containsAny(name, nonFoodKeywords);
+  const result = matchProduct(productName);
+  return result.matched && !result.isFood;
 }
 
 function isLikelyFoodProduct(productName) {
-  const name = cleanName(productName);
-
-  const foodKeywords = [
-    "молок",
-    "кефир",
-    "сметан",
-    "творог",
-    "йогурт",
-    "сыр",
-    "масло",
-
-    "яйц",
-    "соль",
-    "сахар",
-    "мука",
-    "рис",
-    "греч",
-    "макарон",
-    "лапша",
-    "пельмен",
-    "вареник",
-    "майонез",
-    "фасол",
-
-    "картоф",
-    "морков",
-    "лук",
-    "чеснок",
-    "свекл",
-    "капуст",
-    "огур",
-    "томат",
-    "помидор",
-
-    "куриц",
-    "фарш",
-    "мясо",
-    "рыба",
-
-    "виноград",
-    "киви",
-    "клюкв",
-
-    "кекс",
-    "печенье",
-    "чипс",
-    "начос",
-    "nachos",
-    "смесь",
-    "приправа",
-    "маринад",
-    "паштет",
-    "мандарин",
-    "вода",
-    "питьевая",
-    "йогурт",
-    "груш",
-    "банан",
-    "профитрол",
-    "морожен",
-
-  ];
-
-  return containsAny(name, foodKeywords);
+  const result = matchProduct(productName);
+  return result.matched && result.isFood;
 }
 
 function matchIngredient(productName) {
-  if (!productName) return null;
+  const result = matchProduct(productName);
+  return result.isFood ? result.ingredientName : null;
+}
 
-  const name = cleanName(productName);
+function resolveIngredientByName(ingredientName) {
+  const trimmedName = String(ingredientName || "").trim();
 
-  /*
-  ========================================
-  🔥 1. ПРИОРИТЕТНЫЕ ПРОВЕРКИ (важно!)
-  ========================================
-  */
+  if (!trimmedName) return null;
 
-  // ❗ чипсы раньше соли
-  if (
-  name.includes("чипс") ||
-  name.includes("начос") ||
-  name.includes("nachos")
-  ) {
-    return "Чипсы";
+  return get(
+    `
+    SELECT id, name, base_unit
+    FROM ingredients
+    WHERE LOWER(name) = LOWER(?)
+    LIMIT 1
+    `,
+    [trimmedName]
+  );
+}
+
+function createKeywordRule({ keyword, ingredientName, isFood = true, priority = 20 }) {
+  const normalizedKeyword = normalizeKeyword(keyword);
+
+  if (!normalizedKeyword) {
+    throw new Error("Ключевое слово не может быть пустым");
   }
 
-  // ❗ фарш раньше мяса
-  if (name.includes("фарш")) return "Фарш";
+  const foodFlag = isFood ? 1 : 0;
+  let ingredientId = null;
 
-  /*
-  ========================================
-  🥛 МОЛОЧКА
-  ========================================
-  */
+  if (foodFlag) {
+    const ingredient = resolveIngredientByName(ingredientName);
 
-  if (name.includes("молок")) return "Молоко";
-  if (name.includes("кефир")) return "Кефир";
-  if (name.includes("сметан")) return "Сметана";
-  if (name.includes("творог")) return "Творог";
-  if (name.includes("сыр")) return "Сыр";
-  if (name.includes("майонез")) return "Майонез";
-  if (name.includes("масло")) return "Масло";
+    if (!ingredient) {
+      throw new Error(`Ингредиент "${ingredientName}" не найден`);
+    }
 
-  /*
-  ========================================
-  🥚 БАЗОВЫЕ
-  ========================================
-  */
-
-  if (name.includes("яйц")) return "Яйца";
-  if (name.includes("соль")) return "Соль";
-  if (name.includes("сахар")) return "Сахар";
-  if (name.includes("мука")) return "Мука";
-  if (name.includes("рис")) return "Рис";
-
-  /*
-  ========================================
-  🌾 КРУПЫ (🔥 исправлено)
-  ========================================
-  */
-
-  if (name.includes("греч")) return "Гречка";
-
-  if (
-    name.includes("макарон") ||
-    name.includes("лапша")
-  ) {
-    return "Макароны";
+    ingredientId = ingredient.id;
   }
 
-  if (name.includes("пельмен")) return "Пельмени";
+  run(
+    `
+    INSERT INTO product_match_keywords (
+      keyword,
+      ingredient_id,
+      is_food,
+      priority,
+      source
+    )
+    VALUES (?, ?, ?, ?, 'user')
+    ON CONFLICT(keyword)
+    DO UPDATE SET
+      ingredient_id = excluded.ingredient_id,
+      is_food = excluded.is_food,
+      priority = excluded.priority,
+      source = 'user'
+    `,
+    [normalizedKeyword, ingredientId, foodFlag, priority]
+  );
 
-  if (
-    name.includes("фасоль") ||
-    name.includes("фас.") ||
-    name.includes("фас ")
-  ) {
-    return "Фасоль";
-  }
-
-  /*
-  ========================================
-  🥕 ОВОЩИ
-  ========================================
-  */
-
-  if (name.includes("капуст")) return "Капуста";
-  if (name.includes("картоф")) return "Картофель";
-  if (name.includes("морков")) return "Морковь";
-
-  if (name.includes("лук")) return "Лук";
-  if (name.includes("чеснок")) return "Чеснок";
-  if (name.includes("свекл")) return "Свекла";
-  if (name.includes("йогурт")) return "Йогурт";
-  if (name.includes("паштет")) return "Паштет";
-  if (name.includes("мандарин")) return "Мандарин";
-  if (name.includes("вода") || name.includes("питьевая")) return "Вода";
-  if (name.includes("груш")) return "Груша";
-  if (name.includes("банан")) return "Банан";
-  if (name.includes("профитрол")) return "Профитроли";
-  if (name.includes("морожен")) return "Мороженое";
-  if (name.includes("огур")) return "Огурец";
-
-  if (
-    name.includes("томат") ||
-    name.includes("помидор")
-  ) {
-    return "Помидор";
-  }
-
-  /*
-  ========================================
-  🍗 МЯСО
-  ========================================
-  */
-
-  if (name.includes("куриц") || name.includes("цыпл")) {
-    return "Курица";
-  }
-
-  if (name.includes("свинин")) return "Свинина";
-  if (name.includes("говядин")) return "Говядина";
-
-  /*
-  ========================================
-  🐟 РЫБА
-  ========================================
-  */
-
-  if (
-    name.includes("рыба") ||
-    name.includes("вобл") ||
-    name.includes("лосос") ||
-    name.includes("тунец")
-  ) {
-    return "Рыба";
-  }
-
-  /*
-  ========================================
-  🍞 ХЛЕБ
-  ========================================
-  */
-
-  if (name.includes("лаваш")) return "Лаваш";
-  if (name.includes("багет")) return "Багет";
-  if (name.includes("хлеб")) return "Хлеб";
-
-  /*
-  ========================================
-  🍭 ПРОЧЕЕ
-  ========================================
-  */
-
-  if (name.includes("печенье")) return "Печенье";
-  if (name.includes("кекс")) return "Кекс";
-  if (name.includes("леден")) return "Леденцы";
-
-  if (name.includes("сок")) return "Сок";
-  if (name.includes("нектар")) return "Нектар";
-
-  if (name.includes("приправ") || name.includes("смесь")) return "Приправа";
-
-  return null;
+  return get(
+    `
+    SELECT
+      pmk.id,
+      pmk.keyword,
+      pmk.ingredient_id,
+      pmk.is_food,
+      pmk.priority,
+      pmk.source,
+      i.name AS ingredient_name
+    FROM product_match_keywords pmk
+    LEFT JOIN ingredients i
+      ON i.id = pmk.ingredient_id
+    WHERE pmk.keyword = ?
+    LIMIT 1
+    `,
+    [normalizedKeyword]
+  );
 }
 
 module.exports = {
+  matchProduct,
   matchIngredient,
   isNonFoodProduct,
   isLikelyFoodProduct,
+  createKeywordRule,
 };

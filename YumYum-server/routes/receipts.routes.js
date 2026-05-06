@@ -2,9 +2,8 @@ const express = require("express");
 const axios = require("axios");
 const { get, run, transaction } = require("../db");
 const {
-  matchIngredient,
-  isNonFoodProduct,
-  isLikelyFoodProduct,
+  matchProduct,
+  createKeywordRule,
 } = require("../utils/productMatcher");
 const parseProductAmount = require("../utils/parseProductAmount");
 const {
@@ -16,6 +15,17 @@ const router = express.Router();
 
 const ALLOWED_UNITS = ["g", "ml", "pcs"];
 const USER_ID = 1;
+
+function suggestKeywordFromName(productName) {
+  const words = String(productName || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s.-]/gu, " ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 4 && !/^\d+$/.test(word));
+
+  return words[0] || "";
+}
 
 function resolveIngredientByName(ingredientName) {
   const trimmedName = String(ingredientName || "").trim();
@@ -140,7 +150,9 @@ function buildReceiptDraftItem(item, index) {
     };
   }
 
-  if (isNonFoodProduct(originalName)) {
+  const match = matchProduct(originalName);
+
+  if (match.matched && !match.isFood) {
     return {
       draftId: String(index),
       originalName,
@@ -155,13 +167,13 @@ function buildReceiptDraftItem(item, index) {
       reason: "non_food",
       status: "skipped",
       receiptQuantity: item?.quantity ?? null,
+      matchedKeyword: match.keyword,
+      keywordCandidate: suggestKeywordFromName(originalName),
     };
   }
 
-  const suggestedIngredientName = matchIngredient(originalName) || "";
-  const likelyFood = Boolean(
-    suggestedIngredientName || isLikelyFoodProduct(originalName)
-  );
+  const suggestedIngredientName = match.ingredientName || "";
+  const likelyFood = Boolean(match.matched && match.isFood);
 
   if (!likelyFood) {
     return {
@@ -178,6 +190,8 @@ function buildReceiptDraftItem(item, index) {
       reason: "unknown_non_food_or_unclear",
       status: "skipped",
       receiptQuantity: item?.quantity ?? null,
+      matchedKeyword: null,
+      keywordCandidate: suggestKeywordFromName(originalName),
     };
   }
 
@@ -221,6 +235,8 @@ function buildReceiptDraftItem(item, index) {
     unit,
     expiresAt,
     reason: null,
+    matchedKeyword: match.keyword,
+    keywordCandidate: match.keyword || suggestKeywordFromName(originalName),
     status:
       ingredientId && quantity != null && unit
         ? "ready"
@@ -234,6 +250,8 @@ function saveConfirmedItem(item) {
   const quantity = normalizeEditableQuantity(item?.quantity);
   const unit = normalizeEditableUnit(item?.unit);
   const ingredientNameInput = String(item?.ingredientName || "").trim();
+  const rememberKeywordRule = item?.rememberKeywordRule === true;
+  const keywordInput = String(item?.keyword || item?.keywordCandidate || "").trim();
 
   if (!name) {
     return {
@@ -267,6 +285,17 @@ function saveConfirmedItem(item) {
   if (ingredientId && baseUnit === unit) {
     normalizedQuantity = quantity;
     normalizedUnit = unit;
+  }
+
+  let savedKeywordRule = null;
+
+  if (rememberKeywordRule && keywordInput && ingredientId) {
+    savedKeywordRule = createKeywordRule({
+      keyword: keywordInput,
+      ingredientName,
+      isFood: true,
+      priority: 15,
+    });
   }
 
   const requestedExpiresAt = normalizeDateInput(
@@ -336,6 +365,7 @@ function saveConfirmedItem(item) {
     item: {
       ...product,
       ingredientName: ingredientName || null,
+      savedKeywordRule,
     },
   };
 }
