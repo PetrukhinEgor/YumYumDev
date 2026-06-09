@@ -11,9 +11,8 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import axios from "axios";
-import { API_URL } from "../config/api";
 import { isDisplayDate, toApiDate } from "../utils/dateFormat";
+import { addProduct } from "../repositories/productsRepository";
 
 const UNIT_OPTIONS = ["g", "ml", "pcs"];
 
@@ -47,7 +46,7 @@ export default function AddProductScreen({ navigation }) {
     try {
       setLoading(true);
 
-      await axios.post(`${API_URL}/api/products`, {
+      await addProduct({
         name: trimmedName,
         quantity: Number(quantity),
         unit,
@@ -62,7 +61,9 @@ export default function AddProductScreen({ navigation }) {
       ]);
     } catch (err) {
       const errorText =
-        err.response?.data?.error || "Не удалось добавить продукт";
+        err.response?.data?.error ||
+        err.message ||
+        "Не удалось добавить продукт";
       Alert.alert("Ошибка", errorText);
     } finally {
       setLoading(false);

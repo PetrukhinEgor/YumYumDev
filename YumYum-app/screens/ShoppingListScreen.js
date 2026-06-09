@@ -10,9 +10,8 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
-import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { API_URL } from "../config/api";
+import { buildShoppingList } from "../repositories/shoppingRepository";
 
 export default function ShoppingListScreen({ route, navigation }) {
   const recipes = useMemo(() => route?.params?.recipes || [], [route?.params]);
@@ -40,11 +39,9 @@ export default function ShoppingListScreen({ route, navigation }) {
         setLoading(true);
         setError("");
 
-        const res = await axios.post(`${API_URL}/api/shopping-list`, {
-          recipes,
-        });
+        const rows = await buildShoppingList(recipes);
 
-        setShoppingList(res.data?.shoppingList || []);
+        setShoppingList(rows || []);
         setCheckedItems({});
       } catch (err) {
         console.log("Ошибка загрузки списка покупок:", err.message);

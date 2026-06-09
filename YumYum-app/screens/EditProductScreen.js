@@ -10,9 +10,8 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import axios from "axios";
-import { API_URL } from "../config/api";
 import { isDisplayDate, toApiDate, toDisplayDate } from "../utils/dateFormat";
+import { updateProduct } from "../repositories/productsRepository";
 
 const UNIT_OPTIONS = ["g", "ml", "pcs"];
 
@@ -78,7 +77,7 @@ export default function EditProductScreen({ route, navigation }) {
     try {
       setLoading(true);
 
-      await axios.patch(`${API_URL}/api/products/${product.id}`, {
+      await updateProduct(product.id, {
         name: trimmedName,
         quantity: parsedQuantity,
         unit,
@@ -93,7 +92,9 @@ export default function EditProductScreen({ route, navigation }) {
       ]);
     } catch (err) {
       const errorText =
-        err.response?.data?.error || "Не удалось обновить продукт";
+        err.response?.data?.error ||
+        err.message ||
+        "Не удалось обновить продукт";
       Alert.alert("Ошибка", errorText);
     } finally {
       setLoading(false);

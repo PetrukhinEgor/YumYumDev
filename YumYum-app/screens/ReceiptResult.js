@@ -10,10 +10,13 @@ import {
   Switch,
   Alert,
 } from "react-native";
-import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { API_URL } from "../config/api";
 import { isDisplayDate, toApiDate, toDisplayDate } from "../utils/dateFormat";
+import {
+  buildReceiptDraftItems,
+  confirmReceiptItems,
+} from "../services/receiptLocalService";
+import { fetchReceiptByQr } from "../services/receiptApiService";
 
 const UNIT_OPTIONS = ["g", "ml", "pcs"];
 
@@ -32,13 +35,9 @@ export default function ReceiptResult({ route, navigation }) {
         setError("");
         setItems([]);
 
-        const res = await axios.post(
-          `${API_URL}/api/receipts/scan`,
-          { qr: qrData },
-          { timeout: 10000 }
-        );
-
-        const receiptItems = (res.data?.items || []).map((item) => ({
+        const { rawItems } = await fetchReceiptByQr(qrData);
+        const localDraftItems = await buildReceiptDraftItems(rawItems);
+        const receiptItems = localDraftItems.map((item) => ({
           ...item,
           expiresAt: toDisplayDate(item.expiresAt || item.expires_at),
           keyword: item.keywordCandidate || item.matchedKeyword || "",
@@ -140,14 +139,10 @@ export default function ReceiptResult({ route, navigation }) {
         expiresAt: toApiDate(item.expiresAt || item.expires_at) || null,
       }));
 
-      const res = await axios.post(
-        `${API_URL}/api/receipts/confirm`,
-        { items: payloadItems },
-        { timeout: 10000 }
-      );
+      const res = await confirmReceiptItems(payloadItems);
 
-      const addedCount = res.data?.addedCount ?? 0;
-      const skippedCount = res.data?.skippedCount ?? 0;
+      const addedCount = res?.addedCount ?? 0;
+      const skippedCount = res?.skippedCount ?? 0;
 
       Alert.alert(
         "Сканирование подтверждено",

@@ -11,8 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import axios from "axios";
-import { API_URL } from "../config/api";
+import { createRecipe } from "../repositories/recipesRepository";
 
 const CATEGORY_OPTIONS = [
   "Завтрак",
@@ -97,20 +96,22 @@ export default function CreateRecipeScreen({ navigation }) {
     try {
       setLoading(true);
 
-      const res = await axios.post(`${API_URL}/api/recipes`, payload);
+      const recipeId = await createRecipe(payload);
 
       Alert.alert("Успех", "Рецепт создан", [
         {
           text: "OK",
           onPress: () =>
             navigation.replace("RecipeDetails", {
-              recipeId: res.data.recipeId,
+              recipeId,
             }),
         },
       ]);
     } catch (err) {
       const errorText =
-        err.response?.data?.error || "Не удалось создать рецепт";
+        err.response?.data?.error ||
+        err.message ||
+        "Не удалось создать рецепт";
       Alert.alert("Ошибка", errorText);
     } finally {
       setLoading(false);

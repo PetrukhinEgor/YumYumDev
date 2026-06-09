@@ -11,10 +11,9 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
-import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { API_URL } from "../config/api";
+import { listRecipes } from "../repositories/recipesRepository";
 
 const CATEGORY_OPTIONS = [
   "Все",
@@ -42,8 +41,8 @@ export default function HomeScreen({ navigation, route }) {
   const loadRecipes = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_URL}/api/recipes`);
-      setRecipes(res.data || []);
+      const rows = await listRecipes();
+      setRecipes(rows || []);
     } catch (err) {
       console.log("Ошибка загрузки рецептов:", err.message);
       setRecipes([]);

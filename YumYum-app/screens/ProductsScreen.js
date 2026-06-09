@@ -10,11 +10,10 @@ import {
   Alert,
   TextInput,
 } from "react-native";
-import axios from "axios";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { API_URL } from "../config/api";
 import { toDisplayDate } from "../utils/dateFormat";
+import { deleteProduct, listProducts } from "../repositories/productsRepository";
 
 function getExpirationText(product) {
   if (!product.expires_at) return "Срок годности: не указан";
@@ -57,8 +56,8 @@ export default function ProductsScreen({ navigation }) {
   const loadProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_URL}/api/products`);
-      setProducts(res.data || []);
+      const rows = await listProducts();
+      setProducts(rows || []);
     } catch (err) {
       console.log("Ошибка загрузки продуктов:", err.message);
       Alert.alert("Ошибка", "Не удалось загрузить список продуктов");
@@ -81,7 +80,7 @@ export default function ProductsScreen({ navigation }) {
         style: "destructive",
         onPress: async () => {
           try {
-            await axios.delete(`${API_URL}/api/products/${id}`);
+            await deleteProduct(id);
             setProducts((prev) => prev.filter((item) => item.id !== id));
           } catch (err) {
             console.log("Ошибка удаления:", err.message);

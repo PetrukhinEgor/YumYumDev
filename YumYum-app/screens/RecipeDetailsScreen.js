@@ -10,10 +10,14 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
-import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { API_URL } from "../config/api";
+import {
+  checkRecipe,
+  cookRecipe,
+  deleteRecipe,
+  getRecipe,
+} from "../repositories/recipesRepository";
 
 export default function RecipeDetailsScreen({ route, navigation }) {
   const { recipeId } = route.params;
@@ -28,13 +32,13 @@ export default function RecipeDetailsScreen({ route, navigation }) {
     try {
       setLoading(true);
 
-      const [recipeRes, checkRes] = await Promise.all([
-        axios.get(`${API_URL}/api/recipes/${recipeId}`),
-        axios.get(`${API_URL}/api/recipes/${recipeId}/check`),
+      const [recipeData, checkDataResult] = await Promise.all([
+        getRecipe(recipeId),
+        checkRecipe(recipeId),
       ]);
 
-      setRecipe(recipeRes.data);
-      setCheckData(checkRes.data);
+      setRecipe(recipeData);
+      setCheckData(checkDataResult);
     } catch (err) {
       console.log("Ошибка загрузки рецепта:", err.message);
       setRecipe(null);
@@ -66,15 +70,15 @@ export default function RecipeDetailsScreen({ route, navigation }) {
             try {
               setActionLoading(true);
 
-              const res = await axios.post(
-                `${API_URL}/api/recipes/${recipeId}/cook`
-              );
+              await cookRecipe(recipeId);
 
-              Alert.alert("Успех", res.data.message || "Блюдо приготовлено");
+              Alert.alert("Успех", "Блюдо приготовлено");
               await loadData();
             } catch (err) {
               const errorText =
-                err.response?.data?.error || "Не удалось приготовить блюдо";
+                err.response?.data?.error ||
+                err.message ||
+                "Не удалось приготовить блюдо";
               Alert.alert("Ошибка", errorText);
             } finally {
               setActionLoading(false);
@@ -97,7 +101,7 @@ export default function RecipeDetailsScreen({ route, navigation }) {
           onPress: async () => {
             try {
               setDeleteLoading(true);
-              await axios.delete(`${API_URL}/api/recipes/${recipeId}`);
+              await deleteRecipe(recipeId);
               Alert.alert("Успех", "Рецепт удалён", [
                 {
                   text: "OK",
@@ -106,7 +110,9 @@ export default function RecipeDetailsScreen({ route, navigation }) {
               ]);
             } catch (err) {
               const errorText =
-                err.response?.data?.error || "Не удалось удалить рецепт";
+                err.response?.data?.error ||
+                err.message ||
+                "Не удалось удалить рецепт";
               Alert.alert("Ошибка", errorText);
             } finally {
               setDeleteLoading(false);

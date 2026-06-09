@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "YumYum-app",
-    "slug": "YumYum-app",
+    "name": "YumYum",
+    "slug": "yumyum",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,6 +16,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.egorpetrukhin.yumyum",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -24,6 +25,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d49e62ef-8c4d-4805-8fdf-b2153ad35eea"
+      }
     }
   }
 }
